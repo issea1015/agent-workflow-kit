@@ -2,4 +2,5 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <url><loc>https://issea1015.github.io/agent-workflow-kit/</loc></url>
 <url><loc>https://issea1015.github.io/agent-workflow-kit/guides/audit-claude-code-hooks.html</loc></url>
+<url><loc>https://issea1015.github.io/agent-workflow-kit/guides/block-dangerous-commands-claude-code.html</loc></url>
 </urlset>

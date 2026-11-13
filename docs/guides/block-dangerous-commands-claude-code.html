@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to stop Claude Code from running rm -rf and other destructive commands</title>
+<meta name="description" content="A 50-line PreToolUse hook that blocks rm -rf ~, force pushes to main and curl | sh before Claude Code runs them. Install it in a minute, test it without risk, and see what it does and does not cover.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/block-dangerous-commands-claude-code.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>How to stop Claude Code from running rm -rf and other destructive commands</h1>
+  <p class="lead">Approving every command gets old fast, and auto-accept means one bad guess can delete a folder or overwrite main. A PreToolUse hook gives you a safety net: it checks each shell command before it runs and blocks the catastrophic ones.</p>
+</header>
+<article>
+<h2>How a blocking hook works</h2>
+<p>Claude Code runs <code>PreToolUse</code> hooks before every tool call and sends them the call as JSON on stdin. If the hook exits with code <code>2</code>, the call is blocked and whatever the hook printed to stderr goes back to Claude, so it can change its approach. Exit code <code>0</code> lets the call through.</p>
+
+<h2>1. Install a free guard hook (1 minute)</h2>
+<p><a href="https://github.com/issea1015/guard-dangerous-bash">guard-dangerous-bash</a> is about 50 lines of standard-library Python. It makes no network calls and writes no files. Read it first, then:</p>
+<pre><code>mkdir -p ~/.claude/hooks
+curl -o ~/.claude/hooks/guard-dangerous-bash.py \
+  https://raw.githubusercontent.com/issea1015/guard-dangerous-bash/main/guard.py</code></pre>
+<p>Register it in <code>~/.claude/settings.json</code> so it applies to every project:</p>
+<pre><code>{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "python3 ~/.claude/hooks/guard-dangerous-bash.py" }] }
+    ]
+  }
+}</code></pre>
+
+<h2>2. Test it without running anything dangerous</h2>
+<p>The hook only reads JSON, so you can feed it a fake tool call. Nothing gets executed:</p>
+<pre><code>echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf ~"}}' \
+  | python3 ~/.claude/hooks/guard-dangerous-bash.py; echo "exit=$?"</code></pre>
+<pre><code>Blocked by guard-dangerous-bash: recursive delete of the root or home directory. If this is really intended, run it yourself outside Claude Code.
+exit=2</code></pre>
+<p>Normal work passes through: <code>rm -rf ./build</code> and <code>git push origin feature</code> both exit 0.</p>
+
+<h2>What it blocks</h2>
+<ul>
+  <li><code>rm -rf /</code>, <code>rm -rf ~</code>, <code>rm -rf $HOME</code>, including at the end of a chain like <code>cd /tmp &amp;&amp; rm -rf /</code></li>
+  <li>force pushes to <code>main</code> or <code>master</code></li>
+  <li><code>curl … | sh</code> and <code>wget … | bash</code> (running a downloaded script)</li>
+  <li><code>mkfs</code>, <code>dd of=/dev/sdX</code>, redirects onto disk devices, fork bombs, <code>chmod -R 777 /</code></li>
+</ul>
+
+<h2>What it doesn't do</h2>
+<p>It's a safety net, not a sandbox. It matches command text, so a determined script can get around it, and it only watches the Bash tool. Keep using version control, and run untrusted projects in a container. Permission <code>deny</code> rules in <code>settings.json</code> are a good complement: they match how a command starts, while a hook sees the whole command string.</p>
+<p>Also check the hooks you already have. A hook runs with your permissions, and skills or plugins can add them. <a href="audit-claude-code-hooks.html">How to audit Claude Code hooks</a> shows a 10-second check.</p>
+
+<h2>Want the full set?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> includes this guard plus two more safety hooks (one keeps <code>.env</code> files and keys out of the agent's context), 9 workflow skills, 3 CLAUDE.md templates and <code>audit.py</code>, which checks every hook on your machine. It installs as a Claude Code plugin.</p>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-block-commands">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
