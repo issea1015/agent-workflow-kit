@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Workflow Kit: audited skills &amp; hooks for Claude Code</title>
+<meta name="description" content="15 tested Claude Code skills, hooks and CLAUDE.md templates, plus the auditor that proves they're safe. $29 launch price.">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Claude Code skills and hooks you can actually trust.</h1>
+  <p class="lead">Every Claude Code skill pack says it's "vetted". This one ships the proof: 15 tested skills, hooks and templates, plus <code>audit.py</code>, the static auditor that checks them, and anything else you install.</p>
+  <a class="cta" href="#buy" id="buy">Get the kit</a><span class="price">$29 launch · <s>$39</s> · one-time, free 1.x updates</span>
+  <p class="free">Free, open source: the <a href="https://github.com/issea1015/guard-dangerous-bash">guard-dangerous-bash</a> hook and the <a href="https://github.com/issea1015/agent-hook-audit">agent-hook-audit</a> GitHub Action.</p>
+</header>
+
+<section>
+  <h2>Safety hooks</h2>
+  <div class="grid">
+    <div class="card"><h3>guard-dangerous-bash</h3><p>Blocks <code>rm -rf /</code>, force-pushes to main, disk wipes and <code>curl | sh</code> before they run.</p></div>
+    <div class="card"><h3>protect-secrets</h3><p>Keeps <code>.env</code> files, SSH keys and cloud credentials out of the agent's context.</p></div>
+    <div class="card"><h3>format-on-edit</h3><p>Runs your project's own formatter on every file the agent edits.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Workflow skills</h2>
+  <div class="grid">
+    <div class="card"><h3>code-review</h3><p>Severity-ranked findings, each one with a concrete failure scenario.</p></div>
+    <div class="card"><h3>pr-description</h3><p>A reviewer-ready PR body written from the diff.</p></div>
+    <div class="card"><h3>release-notes</h3><p>A changelog grouped by impact, built from git history.</p></div>
+    <div class="card"><h3>test-writer</h3><p>Tests for changed code that follow your repo's conventions.</p></div>
+    <div class="card"><h3>debug-investigation</h3><p>Hypothesis-driven debugging instead of random edits.</p></div>
+    <div class="card"><h3>docs-sync</h3><p>Updates the docs to match what the code now does.</p></div>
+    <div class="card"><h3>dependency-upgrade</h3><p>Incremental, test-gated dependency bumps.</p></div>
+    <div class="card"><h3>refactor-safely</h3><p>Behavior-preserving refactors with a test safety net.</p></div>
+    <div class="card"><h3>setup-audit</h3><p>"Is my setup safe?" Audits every hook you have installed and explains each finding.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>CLAUDE.md templates</h2>
+  <p>Ready-to-fill templates for a <b>web app</b>, a <b>Python library</b> and a <b>monorepo</b>, each with a commands table, guardrails and a definition of done, so the agent runs your checks before it says "done".</p>
+</section>
+
+<section>
+  <h2>Why audit?</h2>
+  <p>Snyk's ToxicSkills study (Feb 2026) found critical security issues in 13.4% of 3,984 public agent skills, including 76 confirmed malicious payloads. "Vetted" isn't enough; check for yourself.</p>
+</section>
+
+<section>
+  <h2>The audit, in your terminal</h2>
+<pre><code>$ python3 tools/audit.py some-other-pack/
+FAIL hooks/sync/sync.py: uses 'network' capability but the safety audit doesn't acknowledge it
+audited 6 item(s): FAIL
+
+$ python3 tools/audit.py --settings      # hooks already on your machine
+HIGH   download-and-run .claude/settings.json hooks.SessionStart[0]: curl -s https://… | bash
+MEDIUM script-subprocess ~/.claude/settings.json hooks.PostToolUse[0]: format.py uses 'subprocess'
+audited 5 hook command(s) in 2 file(s): FAIL (1 high, 1 other)</code></pre>
+  <p>A hook keeps running after the skill that installed it is deleted. Skill registries scan skill code; <code>--settings</code> checks the hook configurations themselves, and the scripts they call.</p>
+  <p>Standard library only. No telemetry, no network calls. Every script has automated tests.</p>
+</section>
+
+<section>
+  <h2>FAQ</h2>
+  <details><summary>What do I need?</summary><p>Claude Code and Python 3.8+ (standard library only). Install it as a Claude Code plugin in one step (<code>/plugin</code>), or copy only the items you want.</p></details>
+  <details><summary>Can my team use it?</summary><p>The personal license covers you plus 1 collaborator. The team license ($99) covers your whole organization.</p></details>
+  <details><summary>Refunds?</summary><p>30 days, no questions asked.</p></details>
+  <details><summary>Will it get updates?</summary><p>All 1.x updates are free.</p></details>
+</section>
+
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
