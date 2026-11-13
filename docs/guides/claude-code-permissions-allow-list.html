@@ -88,6 +88,14 @@ checked 1 file(s): FAIL (1 high, 3 other)</code></pre>
 <h2>A rule list isn't a safety net</h2>
 <p>Prefix rules match what a command starts with, so a chained command can still surprise you. A PreToolUse hook sees the full command before it runs: <a href="block-dangerous-commands-claude-code.html">block rm -rf, force-push and curl | sh with a free hook</a>.</p>
 
+<h2>Related guides</h2>
+<ul>
+  <li><a href="audit-claude-code-hooks.html">How to audit Claude Code hooks for malicious commands</a></li>
+  <li><a href="block-dangerous-commands-claude-code.html">How to stop Claude Code from running rm -rf and other destructive commands</a></li>
+  <li><a href="check-claude-code-skill-before-installing.html">How to check a Claude Code skill before you install it</a></li>
+  <li><a href="check-claude-md-file.html">Check your CLAUDE.md: length, broken @imports, pasted keys</a></li>
+  <li><a href="claude-code-hook-not-working.html">Claude Code hook not working? A 7-step debugging checklist</a></li>
+</ul>
 <h2>Want the full set, already audited?</h2>
 <p>The <a href="../">Agent Workflow Kit</a> bundles 3 safety hooks (one keeps <code>.env</code> and keys out of the agent's context), 9 skills and 3 CLAUDE.md templates, plus <code>audit.py</code> to check every hook already on your machine.</p>
 <a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-permissions">Get the kit · $29</a>

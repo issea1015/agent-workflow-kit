@@ -80,6 +80,14 @@ checked 3 file(s), ~69 tokens: FAIL (3 high/error, 2 other)</code></pre>
 <h2>Keep keys out of the session, not just the file</h2>
 <p>Cleaning CLAUDE.md fixes one leak. The agent can still read <code>.env</code> or print a key with a shell command. Start with deny rules for secret files: <a href="claude-code-permissions-allow-list.html">a safe allow list for Claude Code</a>.</p>
 
+<h2>Related guides</h2>
+<ul>
+  <li><a href="audit-claude-code-hooks.html">How to audit Claude Code hooks for malicious commands</a></li>
+  <li><a href="block-dangerous-commands-claude-code.html">How to stop Claude Code from running rm -rf and other destructive commands</a></li>
+  <li><a href="check-claude-code-skill-before-installing.html">How to check a Claude Code skill before you install it</a></li>
+  <li><a href="claude-code-hook-not-working.html">Claude Code hook not working? A 7-step debugging checklist</a></li>
+  <li><a href="claude-code-permissions-allow-list.html">Claude Code permissions: a safe allow list (and rules never to add)</a></li>
+</ul>
 <h2>Want the full set, already audited?</h2>
 <p>The <a href="../">Agent Workflow Kit</a> bundles 3 CLAUDE.md templates, 3 safety hooks (one keeps <code>.env</code> and keys out of the agent's context), 9 skills, and <code>audit.py</code> to check every hook already on your machine.</p>
 <a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-claudemd">Get the kit · $29</a>
