@@ -72,7 +72,15 @@ exit=2</code></pre>
 <h2>7. Did Claude Code pick up the change?</h2>
 <p>Claude Code reads hooks when a session starts, so edits made mid-session may not apply yet. Open the <code>/hooks</code> menu to see what's actually loaded, or start Claude Code with <code>claude --debug</code> to see each hook run and its exit code.</p>
 
-<h2>Check steps 1–5 in one command</h2>
+<h2>Check steps 1–6 automatically (free)</h2>
+<p><a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/hook_doctor.py">hook_doctor.py</a> is a free, read-only script that runs the checks above for you: JSON, event names, matcher case, missing or non-executable scripts, and relative paths. With no arguments it checks every settings file Claude Code reads.</p>
+<pre><code>$ python3 hook_doctor.py .claude/settings.json
+ERROR .claude/settings.json hooks.PreToolUse[0]: matcher 'bash' never matches: tool names are case-sensitive, use 'Bash'
+WARN  .claude/settings.json hooks.PreToolUse[0]: .claude/hooks/guard.py is relative to the working directory; use "$CLAUDE_PROJECT_DIR"/.claude/hooks/guard.py
+ERROR .claude/settings.json hooks.PreToolUse[0]: script not found: .claude/hooks/guard.py
+checked 1 file(s): 2 error(s), 1 warning(s)</code></pre>
+
+<h2>Audit what your hooks do</h2>
 <p>The kit's <code>audit.py --settings</code> reads every hook in a settings file and follows each command into its script. It's built for security (download-and-run, obfuscation, secret access), and it also flags hooks whose script doesn't exist. For a settings file with a lowercase matcher and a missing script:</p>
 <pre><code>$ python3 tools/audit.py --settings .claude/settings.json
 MEDIUM missing-script   .claude/settings.json hooks.PreToolUse[0] matcher='bash': script not found: .claude/hooks/guard.py
