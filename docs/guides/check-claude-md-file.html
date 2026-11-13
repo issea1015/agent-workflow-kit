@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Check your CLAUDE.md: length, broken @imports, pasted keys</title>
+<meta name="description" content="CLAUDE.md loads into every Claude Code session. How to keep it short, find @imports that point nowhere, catch API keys pasted into it, and spot always/never rules that contradict each other, with a free read-only checker.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/check-claude-md-file.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Check your CLAUDE.md: length, broken @imports, pasted keys">
+<meta property="og:description" content="CLAUDE.md loads into every Claude Code session. How to keep it short, find @imports that point nowhere, catch API keys pasted into it, and spot always/never rules that contradict each other, with a free read-only checker.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/check-claude-md-file.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Check your CLAUDE.md: length, broken @imports, pasted keys", "description": "CLAUDE.md loads into every Claude Code session. How to keep it short, find @imports that point nowhere, catch API keys pasted into it, and spot always/never rules that contradict each other, with a free read-only checker.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/check-claude-md-file.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Check your CLAUDE.md: length, broken @imports, pasted keys</h1>
+  <p class="lead">CLAUDE.md is read into every Claude Code session. It grows one "remember this" at a time, until it's long, points at files that moved, says "always" in one place and "never" in another, and sometimes holds a token someone pasted in a hurry. Here's how to check it in one command.</p>
+</header>
+<article>
+<h2>What gets loaded</h2>
+<p>Claude Code reads <code>CLAUDE.md</code> memory files when a session starts: your user file <code>~/.claude/CLAUDE.md</code>, the project's <code>CLAUDE.md</code> (or <code>.claude/CLAUDE.md</code>), and <code>CLAUDE.md</code> files in parent directories. A file can pull in another with an import line such as <code>@docs/conventions.md</code>; relative paths resolve from the file that contains the import, and imports inside code spans and code blocks are ignored. Type <code>/memory</code> inside Claude Code to see and edit the files in use.</p>
+<p>Everything in those files costs context in every session, whether the task needs it or not.</p>
+
+<h2>Four things that go wrong</h2>
+<ul>
+  <li><strong>Too long.</strong> Hundreds of lines of rules dilute the few that matter and use up context. Keep the file to what applies to almost every task; move the rest into a separate file and import it, or link it.</li>
+  <li><strong>Broken @imports.</strong> A renamed or deleted file means the import quietly brings in nothing.</li>
+  <li><strong>Secrets.</strong> A token in CLAUDE.md is sent to the model every session, and if the file is committed, it's in your git history. Remove it and rotate the key.</li>
+  <li><strong>Contradictions.</strong> "Always use pnpm" in the project file and "Never use pnpm" in <code>CLAUDE.local.md</code> leaves the agent guessing.</li>
+</ul>
+
+<h2>Check it in one command (free)</h2>
+<p><a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/claude_md_check.py">claude_md_check.py</a> is a free, read-only Python script (standard library only; no network, no writes). With no arguments it checks <code>CLAUDE.md</code>, <code>.claude/CLAUDE.md</code> and <code>CLAUDE.local.md</code> in the current directory and its parents, plus <code>~/.claude/CLAUDE.md</code>, and follows their @imports. Here it is on a sample project:</p>
+<pre><code>$ cat CLAUDE.md
+# My app
+- Always use pnpm.
+- Never commit to main.
+- Code style: @docs/conventions.md
+- API reference: @docs/api.md
+- Staging DB password = Tr0ub4dor-staging
+- Deploy key: AKIAIOSFODNN7EXAMPLE
+
+$ python3 claude_md_check.py CLAUDE.md CLAUDE.local.md
+HIGH  CLAUDE.md:6: possible password or secret assignment (passwo...(28 chars)); remove it and rotate the key
+HIGH  CLAUDE.md:7: possible AWS access key id (AKIAIO...(20 chars)); remove it and rotate the key
+ERROR CLAUDE.md:5: @docs/api.md imports a file that does not exist (docs/api.md)
+WARN  CLAUDE.md:2, CLAUDE.local.md:2: contradicting instructions: 'always use pnpm' and 'never use pnpm'
+INFO  CLAUDE.md:3, CLAUDE.local.md:3: same instruction repeated 2 times: 'never commit to main'
+checked 3 file(s), ~69 tokens: FAIL (3 high/error, 2 other)</code></pre>
+<p>Secrets are printed redacted. It also warns when a file is over 200 lines, when all memory together is over roughly 5,000 tokens, on import cycles, and on imports nested more than five deep. It exits with code 1 on any HIGH or ERROR, so you can run it in a pre-commit hook or CI.</p>
+<p class="note">The contradiction check is deliberately simple: it only pairs lines that start with "always" and "never" followed by the same words. It won't catch every conflict, but what it flags is real.</p>
+
+<h2>Keep keys out of the session, not just the file</h2>
+<p>Cleaning CLAUDE.md fixes one leak. The agent can still read <code>.env</code> or print a key with a shell command. Start with deny rules for secret files: <a href="claude-code-permissions-allow-list.html">a safe allow list for Claude Code</a>.</p>
+
+<h2>Want the full set, already audited?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> bundles 3 CLAUDE.md templates, 3 safety hooks (one keeps <code>.env</code> and keys out of the agent's context), 9 skills, and <code>audit.py</code> to check every hook already on your machine.</p>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-claudemd">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
