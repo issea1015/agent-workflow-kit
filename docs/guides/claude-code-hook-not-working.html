@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code hook not working? A 7-step debugging checklist</title>
+<meta name="description" content="Your Claude Code hook never fires, or fires but does not block anything. Check these seven things in order: JSON, file location, event name, matcher case, script path, exit code, and the /hooks menu.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-hook-not-working.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code hook not working? A 7-step debugging checklist</h1>
+  <p class="lead">A hook that silently does nothing is worse than no hook: you think you're protected and you aren't. Go through these seven checks in order. Most broken hooks fail on the first three.</p>
+</header>
+<article>
+<h2>1. Is the settings file valid JSON?</h2>
+<p>One trailing comma and the whole file is ignored. Check it before anything else:</p>
+<pre><code>python3 -m json.tool .claude/settings.json &gt; /dev/null &amp;&amp; echo valid</code></pre>
+<p>A broken file prints the position of the error, for example <code>Expecting value: line 1 column 27 (char 26)</code>.</p>
+
+<h2>2. Is it in a file Claude Code reads?</h2>
+<ul>
+  <li><code>~/.claude/settings.json</code>: user-wide</li>
+  <li><code>.claude/settings.json</code>: this project, usually committed</li>
+  <li><code>.claude/settings.local.json</code>: this project, just for you</li>
+  <li><code>hooks/hooks.json</code>: inside a plugin</li>
+</ul>
+<p>A hook written into <code>settings.json</code> at the project root, is never loaded.</p>
+
+<h2>3. Is the event name spelled exactly right?</h2>
+<p>Event names are case-sensitive keys under <code>"hooks"</code>: <code>PreToolUse</code>, <code>PostToolUse</code>, <code>UserPromptSubmit</code>, <code>SessionStart</code>, <code>Stop</code>, and so on. <code>preToolUse</code> or <code>PreToolUses</code> is just an unknown key.</p>
+
+<h2>4. Does the matcher match the tool name?</h2>
+<p>The matcher is matched against the tool name, and tool names are capitalized: <code>Bash</code>, <code>Edit</code>, <code>Write</code>, <code>Read</code>. A matcher of <code>bash</code> never fires. To match several tools use <code>Edit|Write</code>; to match all of them use <code>*</code>.</p>
+
+<h2>5. Does the script exist where the command looks for it?</h2>
+<p>Hook commands don't always run from the folder you expect. A relative path like <code>python3 .claude/hooks/guard.py</code> breaks as soon as the working directory differs. Anchor it to the project instead:</p>
+<pre><code>"command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard.py"</code></pre>
+<p>If you call the script directly (<code>./guard.sh</code>), it also needs to be executable: <code>chmod +x .claude/hooks/guard.sh</code>.</p>
+
+<h2>6. Does the script exit with the right code?</h2>
+<p>A PreToolUse hook blocks a call only when it exits with code <strong>2</strong>; its stderr is then shown to Claude as the reason. Exit 0 allows the call. Any other non-zero code is reported as a hook error but does <em>not</em> block. Test the script by hand with the JSON Claude Code sends on stdin:</p>
+<pre><code>echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf ~"}}' \
+  | python3 .claude/hooks/guard.py; echo "exit=$?"</code></pre>
+<p>With the free <a href="https://github.com/issea1015/guard-dangerous-bash">guard-dangerous-bash</a> hook this prints:</p>
+<pre><code>Blocked by guard-dangerous-bash: recursive delete of the root or home directory. If this is really intended, run it yourself outside Claude Code.
+exit=2</code></pre>
+<p>A common bug: a Python script that raises an exception exits with 1, so the dangerous command goes through.</p>
+
+<h2>7. Did Claude Code pick up the change?</h2>
+<p>Claude Code reads hooks when a session starts, so edits made mid-session may not apply yet. Open the <code>/hooks</code> menu to see what's actually loaded, or start Claude Code with <code>claude --debug</code> to see each hook run and its exit code.</p>
+
+<h2>Check steps 1–5 in one command</h2>
+<p>The kit's <code>audit.py --settings</code> reads every hook in a settings file and follows each command into its script. It's built for security (download-and-run, obfuscation, secret access), and it also flags hooks whose script doesn't exist. For a settings file with a lowercase matcher and a missing script:</p>
+<pre><code>$ python3 tools/audit.py --settings .claude/settings.json
+MEDIUM missing-script   .claude/settings.json hooks.PreToolUse[0] matcher='bash': script not found: .claude/hooks/guard.py
+audited 1 hook command(s) in 1 file(s): PASS (0 high, 1 other)</code></pre>
+<p class="note">The matcher is printed so you can spot <code>'bash'</code> vs <code>'Bash'</code> at a glance.</p>
+
+<h2>Want hooks that already work?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> ships 3 tested safety hooks, 9 skills and 3 CLAUDE.md templates, with install steps that pass a clean-install QA, plus <code>audit.py</code> and a <code>setup-audit</code> skill. Related guides: <a href="block-dangerous-commands-claude-code.html">block rm -rf in Claude Code</a> · <a href="audit-claude-code-hooks.html">audit hooks for malicious commands</a>.</p>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-hook-debug">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
