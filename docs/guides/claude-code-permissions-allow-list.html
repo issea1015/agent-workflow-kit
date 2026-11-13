@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code permissions: a safe allow list (and rules never to add)</title>
+<meta name="description" content="Claude Code permission rules decide which commands run without asking. A safe starting allow list, the rules that quietly hand over your machine (Bash, rm, curl, bypassPermissions), and a free checker for your settings.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-permissions-allow-list.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Claude Code permissions: a safe allow list (and rules never to add)">
+<meta property="og:description" content="Claude Code permission rules decide which commands run without asking. A safe starting allow list, the rules that quietly hand over your machine (Bash, rm, curl, bypassPermissions), and a free checker for your settings.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-permissions-allow-list.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Claude Code permissions: a safe allow list (and rules never to add)", "description": "Claude Code permission rules decide which commands run without asking. A safe starting allow list, the rules that quietly hand over your machine (Bash, rm, curl, bypassPermissions), and a free checker for your settings.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/claude-code-permissions-allow-list.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code permissions: a safe allow list (and rules never to add)</h1>
+  <p class="lead">Every "Yes, don't ask again" adds a rule to your settings. A few months later the allow list is long, and one or two of those rules let the agent run anything. Here's what a sane list looks like, and how to check yours.</p>
+</header>
+<article>
+<h2>Where the rules live</h2>
+<p>Permission rules sit under <code>"permissions"</code> in <code>~/.claude/settings.json</code>, <code>.claude/settings.json</code> and <code>.claude/settings.local.json</code>, in three lists: <code>allow</code> (runs without asking), <code>ask</code> and <code>deny</code>. Deny wins over allow. Type <code>/permissions</code> inside Claude Code to see what's in effect.</p>
+
+<h2>A safe starting point</h2>
+<pre><code>{
+  "permissions": {
+    "allow": [
+      "Bash(npm run test:*)",
+      "Bash(npm run lint:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "WebFetch(domain:docs.python.org)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)"
+    ]
+  }
+}</code></pre>
+<p>Allow the specific commands you run all day (tests, lint, read-only git). Deny reads of files that hold secrets, so they never land in the agent's context.</p>
+
+<h2>Rules never to add</h2>
+<ul>
+  <li><code>Bash</code> or <code>Bash(*)</code>: every shell command runs without asking.</li>
+  <li><code>Bash(rm:*)</code>, <code>Bash(sudo:*)</code>, <code>Bash(dd:*)</code>: deletion, root, raw disk writes.</li>
+  <li><code>Bash(curl:*)</code>, <code>Bash(wget:*)</code>: the agent can download code or send your files anywhere.</li>
+  <li><code>Bash(bash:*)</code>, <code>Bash(python3:*)</code>, <code>Bash(npx:*)</code>: "run this script" is the same as "run anything".</li>
+  <li><code>Bash(git push:*)</code>: publishing should be a human decision.</li>
+  <li><code>"defaultMode": "bypassPermissions"</code>: no prompts at all. Only for throwaway containers.</li>
+</ul>
+
+<h2>Check your settings in one command (free)</h2>
+<p><a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/permission_check.py">permission_check.py</a> is a free, read-only script. With no arguments it reads every settings file Claude Code uses and flags the rules above:</p>
+<pre><code>$ python3 permission_check.py .claude/settings.json
+HIGH   .claude/settings.json permissions.allow 'Bash(rm:*)': pre-approves `rm`: deletes files
+MEDIUM .claude/settings.json permissions.allow 'Bash(git push:*)': pre-approves `git push`: publishes code
+MEDIUM .claude/settings.json permissions.allow 'WebFetch': allows fetching any URL; prefer WebFetch(domain:example.com)
+LOW    all files: no deny rule for .env; consider "deny": ["Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)"]
+checked 1 file(s): FAIL (1 high, 3 other)</code></pre>
+
+<h2>A rule list isn't a safety net</h2>
+<p>Prefix rules match what a command starts with, so a chained command can still surprise you. A PreToolUse hook sees the full command before it runs: <a href="block-dangerous-commands-claude-code.html">block rm -rf, force-push and curl | sh with a free hook</a>.</p>
+
+<h2>Want the full set, already audited?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> bundles 3 safety hooks (one keeps <code>.env</code> and keys out of the agent's context), 9 skills and 3 CLAUDE.md templates, plus <code>audit.py</code> to check every hook already on your machine.</p>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-permissions">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
