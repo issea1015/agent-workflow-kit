@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code UserPromptSubmit hook examples: 5 copy-paste hooks (tested)</title>
+<meta name="description" content="Five working UserPromptSubmit hooks for Claude Code: block prompts that contain API keys, add git branch context, add today&#x27;s date, log every prompt, and inject project rules on keywords. Each one tested with the JSON Claude Code sends.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-userpromptsubmit-hook-examples.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Claude Code UserPromptSubmit hook examples: 5 copy-paste hooks (tested)">
+<meta property="og:description" content="Five working UserPromptSubmit hooks for Claude Code: block prompts that contain API keys, add git branch context, add today&#x27;s date, log every prompt, and inject project rules on keywords. Each one tested with the JSON Claude Code sends.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-userpromptsubmit-hook-examples.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Claude Code UserPromptSubmit hook examples: 5 copy-paste hooks (tested)", "description": "Five working UserPromptSubmit hooks for Claude Code: block prompts that contain API keys, add git branch context, add today's date, log every prompt, and inject project rules on keywords. Each one tested with the JSON Claude Code sends.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/claude-code-userpromptsubmit-hook-examples.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code UserPromptSubmit hook examples: 5 copy-paste hooks (tested)</h1>
+  <p class="lead">A UserPromptSubmit hook runs when you press Enter, before Claude sees your prompt. It can block the prompt or quietly add context to it. Five small hooks, each tested by piping in the JSON Claude Code sends.</p>
+</header>
+<article>
+<h2>How a UserPromptSubmit hook works</h2>
+<p>Claude Code sends a JSON object on stdin with <code>prompt</code> (the text you typed), <code>session_id</code>, <code>cwd</code> and <code>hook_event_name</code>. UserPromptSubmit takes no matcher: every hook in the group runs on every prompt. The exit code decides what happens:</p>
+<ul>
+  <li><strong>exit 0</strong>: the prompt goes through. Anything the hook prints to stdout is added to the prompt as extra context for Claude.</li>
+  <li><strong>exit 2</strong>: the prompt is blocked and erased. stderr is shown to you, not to Claude.</li>
+  <li>any other code: a non-blocking hook error; the prompt still goes through.</li>
+</ul>
+<p>Instead of plain stdout, a hook can print JSON: <code>{"decision": "block", "reason": "..."}</code> to block, or <code>hookSpecificOutput.additionalContext</code> to add context (example 5). Save the scripts in <code>.claude/hooks/</code> and register them in <code>.claude/settings.json</code>:</p>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;UserPromptSubmit&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/block_secrets.py&quot;},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/git_context.py&quot;},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/add_date.py&quot;},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/log_prompts.py&quot;},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/rules_reminder.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<p class="note">Everything these hooks print becomes part of every prompt, so keep the output to one short line. Long context on each prompt costs tokens and distracts the model.</p>
+
+<h2>1. Block a prompt that contains an API key</h2>
+<p>People paste keys into prompts by accident. This hook checks for AWS keys, GitHub tokens, <code>sk-</code> style keys and private-key headers and stops the prompt before it is sent anywhere.</p>
+<pre><code>import json, re, sys
+prompt = json.load(sys.stdin).get(&quot;prompt&quot;, &quot;&quot;)
+patterns = [r&quot;AKIA[0-9A-Z]{16}&quot;, r&quot;gh[pousr]_[A-Za-z0-9]{36,}&quot;, r&quot;sk-[A-Za-z0-9_-]{20,}&quot;,
+            r&quot;-----BEGIN [A-Z ]*PRIVATE KEY-----&quot;]
+if any(re.search(p, prompt) for p in patterns):
+    print(&quot;Prompt blocked: it contains what looks like an API key or private key. &quot;
+          &quot;Remove it and reference an environment variable instead.&quot;, file=sys.stderr)
+    sys.exit(2)
+sys.exit(0)</code></pre>
+<pre><code>$ echo &#x27;{&quot;prompt&quot;:&quot;use key sk-abcdefghijklmnopqrstuvwx to call the API&quot;}&#x27; | python3 block_secrets.py; echo &quot;exit=$?&quot;
+Prompt blocked: it contains what looks like an API key or private key. Remove it and reference an environment variable instead.
+exit=2
+$ echo &#x27;{&quot;prompt&quot;:&quot;fix the login test&quot;}&#x27; | python3 block_secrets.py; echo &quot;exit=$?&quot;
+exit=0</code></pre>
+<p class="note">A short pattern list, not a full secret scanner. To catch secrets that Claude writes into files, see the <a href="claude-code-posttooluse-hook-examples.html">PostToolUse examples</a>.</p>
+
+<h2>2. Tell Claude which git branch you are on</h2>
+<p>Adds one line with the current branch and the number of uncommitted files, so Claude doesn't have to run <code>git status</code> to find out. Outside a git repo it adds nothing.</p>
+<pre><code>import json, subprocess, sys
+cwd = json.load(sys.stdin).get(&quot;cwd&quot;) or &quot;.&quot;
+def git(*args):
+    r = subprocess.run([&quot;git&quot;, *args], cwd=cwd, capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else &quot;&quot;
+branch = git(&quot;branch&quot;, &quot;--show-current&quot;)
+if branch:
+    changed = git(&quot;status&quot;, &quot;--porcelain&quot;).splitlines()
+    print(f&quot;[context] git branch: {branch}; uncommitted files: {len(changed)}&quot;)
+sys.exit(0)  # not a git repo: add nothing</code></pre>
+<pre><code>$ echo &#x27;{&quot;cwd&quot;:&quot;&#x27;$PWD&#x27;&quot;,&quot;prompt&quot;:&quot;fix the login test&quot;}&#x27; | python3 git_context.py; echo &quot;exit=$?&quot;
+[context] git branch: feature/login; uncommitted files: 1
+exit=0
+$ echo &#x27;{&quot;cwd&quot;:&quot;/tmp&quot;,&quot;prompt&quot;:&quot;hi&quot;}&#x27; | python3 git_context.py; echo &quot;exit=$?&quot;
+exit=0</code></pre>
+
+<h2>3. Add today's date and time</h2>
+<p>The model does not know what day it is. One line of context makes "what is due this week" or "add a changelog entry for today" come out right.</p>
+<pre><code>import datetime, json, sys
+json.load(sys.stdin)
+now = datetime.datetime.now().astimezone()
+print(f&quot;[context] current local time: {now.strftime(&#x27;%Y-%m-%d %H:%M %Z&#x27;)}&quot;)
+sys.exit(0)</code></pre>
+<pre><code>$ echo &#x27;{&quot;prompt&quot;:&quot;what is due this week?&quot;}&#x27; | python3 add_date.py; echo &quot;exit=$?&quot;
+[context] current local time: 2026-11-14 15:16 UTC
+exit=0</code></pre>
+
+<h2>4. Log every prompt</h2>
+<p>Appends each prompt with a timestamp and session id to <code>.claude/prompts.log</code>. Useful for reviewing what you asked for later, or for a team audit trail. Add the log to <code>.gitignore</code>.</p>
+<pre><code>import datetime, json, os, sys
+data = json.load(sys.stdin)
+log = os.path.join(os.environ.get(&quot;CLAUDE_PROJECT_DIR&quot;, &quot;.&quot;), &quot;.claude&quot;, &quot;prompts.log&quot;)
+os.makedirs(os.path.dirname(log), exist_ok=True)
+with open(log, &quot;a&quot;) as f:
+    f.write(f&quot;{datetime.datetime.now().isoformat(timespec=&#x27;seconds&#x27;)}\t&quot;
+            f&quot;{data.get(&#x27;session_id&#x27;, &#x27;?&#x27;)}\t{json.dumps(data.get(&#x27;prompt&#x27;, &#x27;&#x27;))}\n&quot;)
+sys.exit(0)</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;abc123&quot;,&quot;prompt&quot;:&quot;fix the login test&quot;}&#x27; | CLAUDE_PROJECT_DIR=$PWD python3 log_prompts.py; echo &quot;exit=$?&quot;
+exit=0
+$ cat .claude/prompts.log
+2026-11-14T15:16:11	abc123	&quot;fix the login test&quot;</code></pre>
+
+<h2>5. Remind Claude of project rules on keywords</h2>
+<p>Instead of putting every rule in CLAUDE.md, inject a rule only when the prompt mentions the topic. This one uses the JSON output form with <code>additionalContext</code>; edit the <code>rules</code> map for your project.</p>
+<pre><code>import json, re, sys
+prompt = json.load(sys.stdin).get(&quot;prompt&quot;, &quot;&quot;).lower()
+rules = {
+    r&quot;\b(deploy|release|publish)\b&quot;: &quot;Before deploying: run the full test suite and never push to main directly.&quot;,
+    r&quot;\b(migration|migrate|schema)\b&quot;: &quot;Database changes need a reversible migration file in db/migrations/.&quot;,
+}
+hits = [msg for pat, msg in rules.items() if re.search(pat, prompt)]
+if hits:
+    print(json.dumps({&quot;hookSpecificOutput&quot;: {&quot;hookEventName&quot;: &quot;UserPromptSubmit&quot;,
+                                             &quot;additionalContext&quot;: &quot; &quot;.join(hits)}}))
+sys.exit(0)</code></pre>
+<pre><code>$ echo &#x27;{&quot;prompt&quot;:&quot;Deploy the new schema&quot;}&#x27; | python3 rules_reminder.py; echo &quot;exit=$?&quot;
+{&quot;hookSpecificOutput&quot;: {&quot;hookEventName&quot;: &quot;UserPromptSubmit&quot;, &quot;additionalContext&quot;: &quot;Before deploying: run the full test suite and never push to main directly. Database changes need a reversible migration file in db/migrations/.&quot;}}
+exit=0
+$ echo &#x27;{&quot;prompt&quot;:&quot;rename this variable&quot;}&#x27; | python3 rules_reminder.py; echo &quot;exit=$?&quot;
+exit=0</code></pre>
+<p class="note">Rules that apply to every prompt belong in CLAUDE.md; check yours with the free <a href="check-claude-md-file.html">CLAUDE.md checker</a>.</p>
+
+<h2>Before you trust a hook</h2>
+<p>A hook that crashes exits with 1, which does not block anything. Test each one by hand like above, then run the free <a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/hook_doctor.py">hook_doctor.py</a> on your settings file to catch missing scripts and relative paths. If a hook still doesn't fire, see <a href="claude-code-hook-not-working.html">the 7-step checklist</a>.</p>
+
+<h2>Want tested hooks and skills ready to install?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> ships 3 tested safety hooks, 9 skills and 3 CLAUDE.md templates, with install steps that pass a clean-install QA, plus <code>audit.py</code>.</p>
+<h2>Related guides</h2>
+<ul>
+  <li><a href="claude-code-pretooluse-hook-examples.html">Claude Code PreToolUse hook examples: 5 copy-paste hooks</a></li>
+  <li><a href="claude-code-posttooluse-hook-examples.html">Claude Code PostToolUse hook examples: format, lint, test after every edit</a></li>
+  <li><a href="claude-code-hook-not-working.html">Claude Code hook not working? A 7-step debugging checklist</a></li>
+  <li><a href="audit-claude-code-hooks.html">How to audit Claude Code hooks for malicious commands</a></li>
+</ul>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-userpromptsubmit">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
