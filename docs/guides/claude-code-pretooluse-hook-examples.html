@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code PreToolUse hook examples: 5 copy-paste hooks (tested)</title>
+<meta name="description" content="Five working PreToolUse hooks for Claude Code: block rm -rf, protect .env files, stop pushes to main, log every Bash command, and keep edits inside the project. Each one tested with the JSON Claude Code sends.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-pretooluse-hook-examples.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Claude Code PreToolUse hook examples: 5 copy-paste hooks (tested)">
+<meta property="og:description" content="Five working PreToolUse hooks for Claude Code: block rm -rf, protect .env files, stop pushes to main, log every Bash command, and keep edits inside the project. Each one tested with the JSON Claude Code sends.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-pretooluse-hook-examples.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Claude Code PreToolUse hook examples: 5 copy-paste hooks (tested)", "description": "Five working PreToolUse hooks for Claude Code: block rm -rf, protect .env files, stop pushes to main, log every Bash command, and keep edits inside the project. Each one tested with the JSON Claude Code sends.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/claude-code-pretooluse-hook-examples.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code PreToolUse hook examples: 5 copy-paste hooks (tested)</h1>
+  <p class="lead">A PreToolUse hook runs before Claude Code uses a tool and can stop the call. Here are five small hooks you can paste in today, each tested by piping in the same JSON Claude Code sends.</p>
+</header>
+<article>
+<h2>How a PreToolUse hook works</h2>
+<p>Claude Code sends the hook a JSON object on stdin with <code>tool_name</code> and <code>tool_input</code> (for Bash, <code>tool_input.command</code>; for Read, Edit and Write, <code>tool_input.file_path</code>). The exit code decides:</p>
+<ul>
+  <li><strong>exit 0</strong>: allow the call.</li>
+  <li><strong>exit 2</strong>: block it. stderr is shown to Claude as the reason, so Claude can try another way.</li>
+  <li>any other code: reported as a hook error, and the call is <em>not</em> blocked.</li>
+</ul>
+<p>Save the scripts in <code>.claude/hooks/</code> and register them in <code>.claude/settings.json</code>. This file wires up examples 2–5:</p>
+<pre><code>{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [
+        {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/no_push_main.py"},
+        {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/log_bash.py"}
+      ]},
+      {"matcher": "Read|Edit|Write", "hooks": [
+        {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect_env.py"}
+      ]},
+      {"matcher": "Edit|Write", "hooks": [
+        {"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stay_in_project.py"}
+      ]}
+    ]
+  }
+}</code></pre>
+
+<h2>1. Block rm -rf and other destructive commands</h2>
+<p>Don't write this one from scratch: a regex for <code>rm -rf</code> misses <code>rm -r -f</code>, <code>rm --recursive</code>, <code>find -delete</code> and more. Use the free <a href="https://github.com/issea1015/guard-dangerous-bash">guard-dangerous-bash</a> hook, which covers these and has tests. Details: <a href="block-dangerous-commands-claude-code.html">how to stop Claude Code from running rm -rf</a>.</p>
+
+<h2>2. Protect .env and key files</h2>
+<p>Stops Claude's file tools from reading or editing secrets. Matcher: <code>Read|Edit|Write</code>.</p>
+<pre><code>import json, sys, os
+data = json.load(sys.stdin)
+path = data.get("tool_input", {}).get("file_path", "")
+name = os.path.basename(path)
+if name == ".env" or name.startswith(".env.") or name.endswith((".pem", ".key")):
+    print(f"Blocked: {name} holds secrets. Ask the user to edit it.", file=sys.stderr)
+    sys.exit(2)
+sys.exit(0)</code></pre>
+<pre><code>$ echo '{"tool_name":"Edit","tool_input":{"file_path":"/repo/.env"}}' | python3 protect_env.py; echo "exit=$?"
+Blocked: .env holds secrets. Ask the user to edit it.
+exit=2</code></pre>
+<p class="note">This covers the file tools only. <code>cat .env</code> through Bash is a separate path; deny it in your <a href="claude-code-permissions-allow-list.html">permission rules</a> too.</p>
+
+<h2>3. No pushes to main, no force pushes</h2>
+<p>Matcher: <code>Bash</code>. Pushing a feature branch still works.</p>
+<pre><code>import json, re, sys
+cmd = json.load(sys.stdin).get("tool_input", {}).get("command", "")
+if re.search(r"\bgit\s+push\b", cmd) and (re.search(r"\b(main|master)\b", cmd) or re.search(r"\s(-f|--force)\b", cmd)):
+    print("Blocked: no pushes to main/master and no force pushes. Push a branch and open a PR.", file=sys.stderr)
+    sys.exit(2)
+sys.exit(0)</code></pre>
+<pre><code>$ echo '{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}' | python3 no_push_main.py; echo "exit=$?"
+Blocked: no pushes to main/master and no force pushes. Push a branch and open a PR.
+exit=2
+$ echo '{"tool_name":"Bash","tool_input":{"command":"git push -u origin feat/login"}}' | python3 no_push_main.py; echo "exit=$?"
+exit=0</code></pre>
+<p class="note">A simple pattern check, not a sandbox: it stops the usual commands, not a determined workaround.</p>
+
+<h2>4. Log every Bash command</h2>
+<p>Matcher: <code>Bash</code>. Never blocks (always exit 0); appends a timestamped line to <code>.claude/bash.log</code> so you can review what ran.</p>
+<pre><code>import json, sys, datetime, os
+data = json.load(sys.stdin)
+cmd = data.get("tool_input", {}).get("command", "")
+log = os.path.join(os.environ.get("CLAUDE_PROJECT_DIR", "."), ".claude", "bash.log")
+os.makedirs(os.path.dirname(log), exist_ok=True)
+with open(log, "a") as f:
+    f.write(f"{datetime.datetime.now().isoformat(timespec='seconds')}\t{cmd}\n")
+sys.exit(0)</code></pre>
+<pre><code>$ cat .claude/bash.log
+2026-11-14T13:17:04	npm test</code></pre>
+
+<h2>5. Keep edits inside the project</h2>
+<p>Matcher: <code>Edit|Write</code>. Resolves symlinks and <code>..</code> before comparing.</p>
+<pre><code>import json, os, sys
+data = json.load(sys.stdin)
+path = data.get("tool_input", {}).get("file_path", "")
+root = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd()))
+target = os.path.realpath(os.path.join(root, path))
+if os.path.commonpath([root, target]) != root:
+    print(f"Blocked: {path} is outside the project ({root}).", file=sys.stderr)
+    sys.exit(2)
+sys.exit(0)</code></pre>
+<pre><code>$ echo '{"tool_name":"Write","tool_input":{"file_path":"../x.py"}}' | python3 stay_in_project.py; echo "exit=$?"
+Blocked: ../x.py is outside the project (/home/me/proj).
+exit=2</code></pre>
+
+<h2>Before you trust a hook</h2>
+<p>A hook that crashes exits with 1, and exit 1 does <em>not</em> block. Test each hook by hand like above, then run the free <a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/hook_doctor.py">hook_doctor.py</a> on your settings file to catch wrong matcher case, missing scripts and relative paths:</p>
+<pre><code>$ python3 hook_doctor.py .claude/settings.json
+checked 1 file(s): 0 error(s), 0 warning(s)</code></pre>
+<p>If a hook still doesn't fire, see <a href="claude-code-hook-not-working.html">the 7-step checklist</a>. Installing hooks someone else wrote? Check what they run first: <a href="audit-claude-code-hooks.html">how to audit Claude Code hooks</a>, or run the <a href="https://apify.com/issea1015/agent-config-audit">hooks &amp; skills security audit</a> on any public repo.</p>
+
+<h2>Want tested hooks and skills ready to install?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> ships 3 tested safety hooks, 9 skills and 3 CLAUDE.md templates, with install steps that pass a clean-install QA, plus <code>audit.py</code>.</p>
+<h2>Related guides</h2>
+<ul>
+  <li><a href="claude-code-hook-not-working.html">Claude Code hook not working? A 7-step debugging checklist</a></li>
+  <li><a href="block-dangerous-commands-claude-code.html">How to stop Claude Code from running rm -rf and other destructive commands</a></li>
+  <li><a href="audit-claude-code-hooks.html">How to audit Claude Code hooks for malicious commands</a></li>
+  <li><a href="claude-code-permissions-allow-list.html">Claude Code permissions: a safe allow list (and rules never to add)</a></li>
+</ul>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-pretooluse-examples">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
