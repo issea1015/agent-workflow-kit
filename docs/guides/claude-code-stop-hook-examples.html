@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code Stop hook examples: 5 copy-paste hooks (tested)</title>
+<meta name="description" content="Five working Stop hooks for Claude Code: don&#x27;t let Claude finish while tests fail, get a desktop notification when it is done, catch new TODOs, ask for a commit message, and log every session. Each one tested with the JSON Claude Code sends.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-stop-hook-examples.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Claude Code Stop hook examples: 5 copy-paste hooks (tested)">
+<meta property="og:description" content="Five working Stop hooks for Claude Code: don&#x27;t let Claude finish while tests fail, get a desktop notification when it is done, catch new TODOs, ask for a commit message, and log every session. Each one tested with the JSON Claude Code sends.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-stop-hook-examples.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Claude Code Stop hook examples: 5 copy-paste hooks (tested)", "description": "Five working Stop hooks for Claude Code: don't let Claude finish while tests fail, get a desktop notification when it is done, catch new TODOs, ask for a commit message, and log every session. Each one tested with the JSON Claude Code sends.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/claude-code-stop-hook-examples.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code Stop hook examples: 5 copy-paste hooks (tested)</h1>
+  <p class="lead">A Stop hook runs when Claude finishes its answer and is about to hand control back to you. It can let Claude stop, or send it back to work with a reason. Five small hooks, each tested by piping in the JSON Claude Code sends.</p>
+</header>
+<article>
+<h2>How a Stop hook works</h2>
+<p>Claude Code sends a JSON object on stdin with <code>session_id</code>, <code>transcript_path</code>, <code>cwd</code>, <code>hook_event_name</code> and <code>stop_hook_active</code>. Stop takes no matcher. The exit code decides what happens:</p>
+<ul>
+  <li><strong>exit 0</strong>: Claude stops normally.</li>
+  <li><strong>exit 2</strong>: Claude is <em>not</em> allowed to stop. stderr is shown to Claude as the reason, and it keeps working.</li>
+  <li>any other code: a non-blocking hook error; Claude stops.</li>
+</ul>
+<p>A hook can also print <code>{"decision": "block", "reason": "..."}</code> on stdout with exit 0 (example 3). <strong>Always check <code>stop_hook_active</code>.</strong> It is <code>true</code> when Claude is already continuing because of a Stop hook; a hook that blocks every time traps Claude in a loop. Register the scripts in <code>.claude/settings.json</code>:</p>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;Stop&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/tests_must_pass.py&quot;, &quot;timeout&quot;: 120},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/notify_done.py&quot;},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/no_todo_left.py&quot;},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/commit_reminder.py&quot;},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/log_stops.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<p class="note">Stop fires at the end of every answer, not only at the end of the session, so keep each hook fast. The test hook gets a longer <code>timeout</code>. SubagentStop takes the same input and output for subagents.</p>
+
+<h2>1. Don't let Claude finish while tests fail</h2>
+<p>The most useful Stop hook. Claude says "done", the hook runs the tests, and if they fail Claude gets the failure and goes back to fix it. Swap the command for <code>npm test</code>, <code>go test ./...</code> or whatever your project uses.</p>
+<pre><code>import json, subprocess, sys
+data = json.load(sys.stdin)
+if data.get(&quot;stop_hook_active&quot;):
+    sys.exit(0)  # already continued once because of this hook: let Claude stop
+r = subprocess.run([&quot;python3&quot;, &quot;-m&quot;, &quot;pytest&quot;, &quot;-q&quot;, &quot;-x&quot;], cwd=data.get(&quot;cwd&quot;) or &quot;.&quot;,
+                   capture_output=True, text=True)
+if &quot;No module named pytest&quot; in r.stderr:
+    sys.exit(0)  # no pytest here: don&#x27;t block on a missing tool
+if r.returncode not in (0, 5):  # 5 = no tests collected
+    tail = &quot;\n&quot;.join((r.stdout + r.stderr).strip().splitlines()[-5:])
+    print(f&quot;Tests are failing. Fix them before finishing:\n{tail}&quot;, file=sys.stderr)
+    sys.exit(2)
+sys.exit(0)</code></pre>
+<pre><code>$ echo &#x27;{&quot;cwd&quot;:&quot;&#x27;$PWD&#x27;&quot;,&quot;stop_hook_active&quot;:false}&#x27; | python3 tests_must_pass.py; echo &quot;exit=$?&quot;
+Tests are failing. Fix them before finishing:
+test_calc.py:3: AssertionError
+=========================== short test summary info ============================
+FAILED test_calc.py::test_add - assert -1 == 3
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 0.02s
+exit=2
+$ # after the fix
+$ echo &#x27;{&quot;cwd&quot;:&quot;&#x27;$PWD&#x27;&quot;,&quot;stop_hook_active&quot;:false}&#x27; | python3 tests_must_pass.py; echo &quot;exit=$?&quot;
+exit=0
+$ echo &#x27;{&quot;cwd&quot;:&quot;&#x27;$PWD&#x27;&quot;,&quot;stop_hook_active&quot;:true}&#x27; | python3 tests_must_pass.py; echo &quot;exit=$?&quot;
+exit=0</code></pre>
+<p class="note">The <code>stop_hook_active</code> check gives Claude one extra round to fix the tests; after that it may stop and tell you what is still broken. Without it, a test Claude cannot fix would loop forever.</p>
+
+<h2>2. Get a desktop notification when Claude is done</h2>
+<p>Start a long task, switch windows, get pinged when it finishes. Uses <code>osascript</code> on macOS, <code>notify-send</code> on Linux, and the terminal bell elsewhere.</p>
+<pre><code>import json, shutil, subprocess, sys
+data = json.load(sys.stdin)
+msg = f&quot;Claude Code finished in {data.get(&#x27;cwd&#x27;, &#x27;?&#x27;)}&quot;
+if shutil.which(&quot;osascript&quot;):
+    subprocess.run([&quot;osascript&quot;, &quot;-e&quot;, f&#x27;display notification &quot;{msg}&quot; with title &quot;Claude Code&quot;&#x27;])
+elif shutil.which(&quot;notify-send&quot;):
+    subprocess.run([&quot;notify-send&quot;, &quot;Claude Code&quot;, msg])
+else:
+    sys.stderr.write(&quot;\a&quot;)  # terminal bell as a fallback
+sys.exit(0)</code></pre>
+<pre><code>$ echo &#x27;{&quot;cwd&quot;:&quot;/home/me/app&quot;}&#x27; | python3 notify_done.py; echo &quot;exit=$?&quot;
+exit=0</code></pre>
+<p class="note">For the "Claude is waiting for your permission" case, put the same script on the <code>Notification</code> event.</p>
+
+<h2>3. Catch new TODO and FIXME lines</h2>
+<p>Looks only at lines added in the uncommitted diff. If Claude left a TODO, it is asked to finish it or say why it stays. This one uses the JSON output form.</p>
+<pre><code>import json, re, subprocess, sys
+data = json.load(sys.stdin)
+if data.get(&quot;stop_hook_active&quot;):
+    sys.exit(0)
+diff = subprocess.run([&quot;git&quot;, &quot;diff&quot;, &quot;-U0&quot;], cwd=data.get(&quot;cwd&quot;) or &quot;.&quot;,
+                      capture_output=True, text=True).stdout
+added = [l[1:].strip() for l in diff.splitlines() if l.startswith(&quot;+&quot;) and not l.startswith(&quot;+++&quot;)]
+todos = [l for l in added if re.search(r&quot;\b(TODO|FIXME|XXX)\b&quot;, l)]
+if todos:
+    print(json.dumps({&quot;decision&quot;: &quot;block&quot;,
+                      &quot;reason&quot;: f&quot;You added {len(todos)} TODO/FIXME line(s), e.g. {todos[0][:80]!r}. &quot;
+                                &quot;Finish them or explain why they stay.&quot;}))
+sys.exit(0)</code></pre>
+<pre><code>$ echo &quot;# TODO: handle overflow&quot; &gt;&gt; calc.py
+$ echo &#x27;{&quot;cwd&quot;:&quot;&#x27;$PWD&#x27;&quot;,&quot;stop_hook_active&quot;:false}&#x27; | python3 no_todo_left.py; echo &quot;exit=$?&quot;
+{&quot;decision&quot;: &quot;block&quot;, &quot;reason&quot;: &quot;You added 1 TODO/FIXME line(s), e.g. &#x27;# TODO: handle overflow&#x27;. Finish them or explain why they stay.&quot;}
+exit=0
+$ git checkout calc.py
+$ echo &#x27;{&quot;cwd&quot;:&quot;&#x27;$PWD&#x27;&quot;,&quot;stop_hook_active&quot;:false}&#x27; | python3 no_todo_left.py; echo &quot;exit=$?&quot;
+exit=0</code></pre>
+
+<h2>4. Ask for a commit message before finishing</h2>
+<p>If the working tree has changes, Claude is asked to summarize them and suggest a commit message, so you can review and commit in one step. It does not commit anything itself.</p>
+<pre><code>import json, subprocess, sys
+data = json.load(sys.stdin)
+if data.get(&quot;stop_hook_active&quot;):
+    sys.exit(0)
+r = subprocess.run([&quot;git&quot;, &quot;status&quot;, &quot;--porcelain&quot;], cwd=data.get(&quot;cwd&quot;) or &quot;.&quot;,
+                   capture_output=True, text=True)
+if r.returncode == 0 and r.stdout.strip():
+    n = len(r.stdout.strip().splitlines())
+    print(f&quot;{n} file(s) are uncommitted. Summarize the change in one line and &quot;
+          &quot;suggest a commit message before finishing.&quot;, file=sys.stderr)
+    sys.exit(2)
+sys.exit(0)</code></pre>
+<pre><code>$ echo &#x27;{&quot;cwd&quot;:&quot;&#x27;$PWD&#x27;&quot;,&quot;stop_hook_active&quot;:false}&#x27; | python3 commit_reminder.py; echo &quot;exit=$?&quot;
+1 file(s) are uncommitted. Summarize the change in one line and suggest a commit message before finishing.
+exit=2
+$ # clean tree
+$ echo &#x27;{&quot;cwd&quot;:&quot;&#x27;$PWD&#x27;&quot;,&quot;stop_hook_active&quot;:false}&#x27; | python3 commit_reminder.py; echo &quot;exit=$?&quot;
+exit=0</code></pre>
+<p class="note">This fires after every answer that leaves changes. If that is too chatty, use it only in projects where you want one commit per task.</p>
+
+<h2>5. Log every finished turn</h2>
+<p>Appends a timestamp, the session id and the number of user messages so far (read from the transcript) to <code>.claude/sessions.log</code>. Add the log to <code>.gitignore</code>.</p>
+<pre><code>import datetime, json, os, sys
+data = json.load(sys.stdin)
+log = os.path.join(os.environ.get(&quot;CLAUDE_PROJECT_DIR&quot;, &quot;.&quot;), &quot;.claude&quot;, &quot;sessions.log&quot;)
+os.makedirs(os.path.dirname(log), exist_ok=True)
+turns = 0
+path = data.get(&quot;transcript_path&quot;)
+if path and os.path.exists(path):
+    with open(path) as f:
+        turns = sum(1 for line in f if &#x27;&quot;type&quot;:&quot;user&quot;&#x27; in line.replace(&quot; &quot;, &quot;&quot;))
+with open(log, &quot;a&quot;) as f:
+    f.write(f&quot;{datetime.datetime.now().isoformat(timespec=&#x27;seconds&#x27;)}\t&quot;
+            f&quot;{data.get(&#x27;session_id&#x27;, &#x27;?&#x27;)}\tuser_messages={turns}\n&quot;)
+sys.exit(0)</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;abc123&quot;,&quot;transcript_path&quot;:&quot;&#x27;$PWD&#x27;/t.jsonl&quot;}&#x27; | CLAUDE_PROJECT_DIR=$PWD python3 log_stops.py; echo &quot;exit=$?&quot;
+exit=0
+$ cat .claude/sessions.log
+2026-11-14T17:16:59	abc123	user_messages=2</code></pre>
+
+<h2>Before you trust a hook</h2>
+<p>A hook that crashes exits with 1, which never blocks, so a broken test hook silently lets Claude stop. Test each one by hand like above, then run the free <a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/hook_doctor.py">hook_doctor.py</a> on your settings file to catch missing scripts and relative paths. If a hook still doesn't fire, see <a href="claude-code-hook-not-working.html">the 7-step checklist</a>.</p>
+
+<h2>Want tested hooks and skills ready to install?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> ships 3 tested safety hooks, 9 skills and 3 CLAUDE.md templates, with install steps that pass a clean-install QA, plus <code>audit.py</code>.</p>
+<h2>Related guides</h2>
+<ul>
+  <li><a href="claude-code-pretooluse-hook-examples.html">Claude Code PreToolUse hook examples: 5 copy-paste hooks</a></li>
+  <li><a href="claude-code-posttooluse-hook-examples.html">Claude Code PostToolUse hook examples: format, lint, test after every edit</a></li>
+  <li><a href="claude-code-userpromptsubmit-hook-examples.html">Claude Code UserPromptSubmit hook examples: block secrets, add context</a></li>
+  <li><a href="claude-code-hook-not-working.html">Claude Code hook not working? A 7-step debugging checklist</a></li>
+</ul>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-stop">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
