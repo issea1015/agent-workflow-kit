@@ -79,6 +79,7 @@ EOF</code></pre>
 <h2>What these checks don't do</h2>
 <p>They find known patterns. An obfuscated script or a cleverly worded instruction can get past grep. Treat a clean result as "no red flags", keep version control, and try unfamiliar plugins in a container first.</p>
 
+<p>Vetting several skill or plugin repos at once? The same checks run as an Apify actor: paste GitHub repo URLs, get one row per repo with every finding and a severity, as JSON/CSV. Nothing to install, $0.05 per audited repo, failed repos are not charged: <a href="https://apify.com/issea1015/agent-config-audit">Claude Code Hooks &amp; Skills Security Audit on Apify</a>.</p>
 <h2>Want skills that pass all of this?</h2>
 <p>The <a href="../">Agent Workflow Kit</a> has 9 workflow skills, 3 safety hooks and 3 CLAUDE.md templates. Every item ships with a written safety audit, and <code>audit.py</code> checks the pack and every hook on your machine. It installs as a Claude Code plugin.</p>
 <h2>Related guides</h2>
