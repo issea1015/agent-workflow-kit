@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code PostToolUse hook examples: 5 copy-paste hooks (tested)</title>
+<meta name="description" content="Five working PostToolUse hooks for Claude Code: auto-format after Edit, feed lint errors back to Claude, log Bash commands, run related tests, and flag secrets just written. Each one tested with the JSON Claude Code sends.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-posttooluse-hook-examples.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Claude Code PostToolUse hook examples: 5 copy-paste hooks (tested)">
+<meta property="og:description" content="Five working PostToolUse hooks for Claude Code: auto-format after Edit, feed lint errors back to Claude, log Bash commands, run related tests, and flag secrets just written. Each one tested with the JSON Claude Code sends.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-posttooluse-hook-examples.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Claude Code PostToolUse hook examples: 5 copy-paste hooks (tested)", "description": "Five working PostToolUse hooks for Claude Code: auto-format after Edit, feed lint errors back to Claude, log Bash commands, run related tests, and flag secrets just written. Each one tested with the JSON Claude Code sends.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/claude-code-posttooluse-hook-examples.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code PostToolUse hook examples: 5 copy-paste hooks (tested)</h1>
+  <p class="lead">A PostToolUse hook runs right after Claude Code finishes a tool call. It cannot undo the call, but it can clean up after it and tell Claude what went wrong. Five small hooks, each tested by piping in the JSON Claude Code sends.</p>
+</header>
+<article>
+<h2>How a PostToolUse hook works</h2>
+<p>The hook runs after the tool has already succeeded. Claude Code sends a JSON object on stdin with <code>tool_name</code>, <code>tool_input</code> (for Edit and Write, <code>tool_input.file_path</code>; for Bash, <code>tool_input.command</code>) and <code>tool_response</code>. The exit code decides what happens next:</p>
+<ul>
+  <li><strong>exit 0</strong>: success, nothing shown to Claude.</li>
+  <li><strong>exit 2</strong>: stderr is fed back to Claude so it can react. The tool call itself is <em>not</em> undone: the file is already written or the command already ran. Use PreToolUse if you need to stop a call (<a href="claude-code-pretooluse-hook-examples.html">PreToolUse examples</a>).</li>
+  <li>any other code: reported as a non-blocking hook error.</li>
+</ul>
+<p>Save the scripts in <code>.claude/hooks/</code> and register them in <code>.claude/settings.json</code>. This file wires up all five:</p>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;PostToolUse&quot;: [
+      {&quot;matcher&quot;: &quot;Edit|Write&quot;, &quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/format_after_edit.py&quot;},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/lint_feedback.py&quot;},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/run_related_tests.py&quot;},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/secret_warning.py&quot;}
+      ]},
+      {&quot;matcher&quot;: &quot;Bash&quot;, &quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/log_bash.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<p class="note">Hooks that match the same event can run in parallel, so don't write hooks that depend on each other's order. Example 2 can lint the file before example 1 has formatted it; that is harmless here, but keep it in mind.</p>
+
+<h2>1. Auto-format a file after Claude edits it</h2>
+<p>Matcher: <code>Edit|Write</code>. Runs black, gofmt or prettier depending on the extension. If the formatter isn't installed (or the file type is unknown) it does nothing and exits 0, so it never breaks your session.</p>
+<pre><code>import json, os, shutil, subprocess, sys
+data = json.load(sys.stdin)
+path = data.get(&quot;tool_input&quot;, {}).get(&quot;file_path&quot;, &quot;&quot;)
+ext = os.path.splitext(path)[1]
+cmds = {
+    &quot;.py&quot;: [&quot;black&quot;, &quot;-q&quot;],
+    &quot;.go&quot;: [&quot;gofmt&quot;, &quot;-w&quot;],
+    &quot;.js&quot;: [&quot;prettier&quot;, &quot;--write&quot;, &quot;--log-level&quot;, &quot;silent&quot;],
+    &quot;.ts&quot;: [&quot;prettier&quot;, &quot;--write&quot;, &quot;--log-level&quot;, &quot;silent&quot;],
+    &quot;.json&quot;: [&quot;prettier&quot;, &quot;--write&quot;, &quot;--log-level&quot;, &quot;silent&quot;],
+}
+cmd = cmds.get(ext)
+if cmd and os.path.isfile(path) and shutil.which(cmd[0]):
+    subprocess.run(cmd + [path], capture_output=True)
+sys.exit(0)  # formatter missing or unknown file type: do nothing</code></pre>
+<pre><code>$ printf 'import os\nx=1\n' &gt; a.py
+$ echo '{"tool_name":"Edit","tool_input":{"file_path":"a.py"},"tool_response":{}}' | python3 format_after_edit.py; echo "exit=$?"
+exit=0
+$ cat a.py
+import os
+
+x = 1</code></pre>
+<p class="note">Tested with black, gofmt and prettier installed; with a missing file or missing formatter it also exits 0.</p>
+
+<h2>2. Feed lint errors back to Claude</h2>
+<p>Matcher: <code>Edit|Write</code>. Runs <code>ruff</code> on Python files; if it finds problems, the report goes to stderr with exit 2 so Claude sees it and fixes the file. No ruff installed means it silently passes.</p>
+<pre><code>import json, os, shutil, subprocess, sys
+data = json.load(sys.stdin)
+path = data.get(&quot;tool_input&quot;, {}).get(&quot;file_path&quot;, &quot;&quot;)
+if path.endswith(&quot;.py&quot;) and os.path.isfile(path) and shutil.which(&quot;ruff&quot;):
+    r = subprocess.run([&quot;ruff&quot;, &quot;check&quot;, &quot;--output-format=concise&quot;, path],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f&quot;ruff found problems in {path}:\n{r.stdout.strip()}&quot;, file=sys.stderr)
+        sys.exit(2)
+sys.exit(0)</code></pre>
+<pre><code>$ echo '{"tool_name":"Write","tool_input":{"file_path":"a.py"},"tool_response":{}}' | python3 lint_feedback.py; echo "exit=$?"
+ruff found problems in a.py:
+a.py:1:1: I001 [*] Import block is un-sorted or un-formatted
+a.py:1:8: F401 [*] `os` imported but unused
+Found 2 errors.
+[*] 2 fixable with the `--fix` option.
+exit=2</code></pre>
+
+<h2>3. Run the related tests after an edit</h2>
+<p>Matcher: <code>Edit|Write</code>. For <code>m.py</code> it runs <code>test_m.py</code> next to it, if that file exists. A failing test goes back to Claude via exit 2. Adapt the naming convention to your project.</p>
+<pre><code>import json, os, shutil, subprocess, sys
+data = json.load(sys.stdin)
+path = data.get(&quot;tool_input&quot;, {}).get(&quot;file_path&quot;, &quot;&quot;)
+base = os.path.basename(path)
+if path.endswith(&quot;.py&quot;) and not base.startswith(&quot;test_&quot;) and shutil.which(&quot;pytest&quot;):
+    test = os.path.join(os.path.dirname(path) or &quot;.&quot;, &quot;test_&quot; + base)
+    if os.path.isfile(test):
+        r = subprocess.run([&quot;pytest&quot;, &quot;-x&quot;, &quot;-q&quot;, test], capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f&quot;Tests in {test} fail after your edit:\n{r.stdout[-1500:]}&quot;, file=sys.stderr)
+            sys.exit(2)
+sys.exit(0)</code></pre>
+<pre><code>$ echo '{"tool_name":"Edit","tool_input":{"file_path":"m.py"},"tool_response":{}}' | python3 run_related_tests.py; echo "exit=$?"
+Tests in ./test_m.py fail after your edit:
+...
+E       assert 1 == 2
+FAILED test_m.py::test_f - assert 1 == 2
+exit=2</code></pre>
+<p class="note">Keep this to fast tests: the hook blocks until pytest finishes.</p>
+
+<h2>4. Log every Bash command</h2>
+<p>Matcher: <code>Bash</code>. Never reports anything (always exit 0); appends a timestamped line to <code>.claude/bash-after.log</code>. Because it runs after the call, it only records commands that actually ran, unlike a PreToolUse logger which also records ones that get blocked.</p>
+<pre><code>import json, sys, datetime, os
+data = json.load(sys.stdin)
+cmd = data.get(&quot;tool_input&quot;, {}).get(&quot;command&quot;, &quot;&quot;)
+log = os.path.join(os.environ.get(&quot;CLAUDE_PROJECT_DIR&quot;, &quot;.&quot;), &quot;.claude&quot;, &quot;bash-after.log&quot;)
+os.makedirs(os.path.dirname(log), exist_ok=True)
+with open(log, &quot;a&quot;) as f:
+    f.write(f&quot;{datetime.datetime.now().isoformat(timespec=&#x27;seconds&#x27;)}\t{json.dumps(cmd)}\n&quot;)
+sys.exit(0)</code></pre>
+<pre><code>$ echo '{"tool_name":"Bash","tool_input":{"command":"npm test"},"tool_response":{}}' | CLAUDE_PROJECT_DIR=$PWD python3 log_bash.py; echo "exit=$?"
+exit=0
+$ cat .claude/bash-after.log
+2026-11-14T14:17:47	"npm test"</code></pre>
+
+<h2>5. Flag a secret that was just written</h2>
+<p>Matcher: <code>Edit|Write</code>. Scans the written text (<code>content</code> for Write, <code>new_string</code> for Edit) for AWS keys, GitHub tokens, <code>sk-</code> style keys and private-key headers. The file is already saved, so this is an after-the-fact alarm: Claude is told to remove it and the user to rotate it.</p>
+<pre><code>import json, re, sys
+ti = json.load(sys.stdin).get(&quot;tool_input&quot;, {})
+text = ti.get(&quot;content&quot;) or ti.get(&quot;new_string&quot;) or &quot;&quot;
+patterns = [r&quot;AKIA[0-9A-Z]{16}&quot;, r&quot;gh[pousr]_[A-Za-z0-9]{36,}&quot;, r&quot;sk-[A-Za-z0-9_-]{20,}&quot;,
+            r&quot;-----BEGIN [A-Z ]*PRIVATE KEY-----&quot;]
+if any(re.search(p, text) for p in patterns):
+    print(f&quot;A secret-like string was just written to {ti.get(&#x27;file_path&#x27;,&#x27;?&#x27;)}. &quot;
+          &quot;Remove it, load it from an environment variable instead, and tell the user to rotate it.&quot;,
+          file=sys.stderr)
+    sys.exit(2)
+sys.exit(0)</code></pre>
+<pre><code>$ echo '{"tool_name":"Write","tool_input":{"file_path":"cfg.py","content":"KEY=\"AKIAABCDEFGHIJKLMNOP\""},"tool_response":{}}' | python3 secret_warning.py; echo "exit=$?"
+A secret-like string was just written to cfg.py. Remove it, load it from an environment variable instead, and tell the user to rotate it.
+exit=2</code></pre>
+<p class="note">A short pattern list, not a secret scanner. To stop secrets before they are written, block <code>.env</code> and key files with a <a href="claude-code-pretooluse-hook-examples.html">PreToolUse hook</a>.</p>
+
+<h2>Before you trust a hook</h2>
+<p>A hook that crashes exits with 1, which does not signal Claude. Test each one by hand like above, then run the free <a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/hook_doctor.py">hook_doctor.py</a> on your settings file to catch wrong matcher case, missing scripts and relative paths. If a hook still doesn't fire, see <a href="claude-code-hook-not-working.html">the 7-step checklist</a>.</p>
+
+<h2>Want tested hooks and skills ready to install?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> ships 3 tested safety hooks, 9 skills and 3 CLAUDE.md templates, with install steps that pass a clean-install QA, plus <code>audit.py</code>.</p>
+<h2>Related guides</h2>
+<ul>
+  <li><a href="claude-code-pretooluse-hook-examples.html">Claude Code PreToolUse hook examples: 5 copy-paste hooks</a></li>
+  <li><a href="claude-code-hook-not-working.html">Claude Code hook not working? A 7-step debugging checklist</a></li>
+  <li><a href="audit-claude-code-hooks.html">How to audit Claude Code hooks for malicious commands</a></li>
+  <li><a href="claude-code-permissions-allow-list.html">Claude Code permissions: a safe allow list</a></li>
+</ul>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-posttooluse">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
