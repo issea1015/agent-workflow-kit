@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code SessionStart hook examples: 5 copy-paste hooks (tested)</title>
+<meta name="description" content="Five working SessionStart hooks for Claude Code: inject git branch and status, load project notes, warn about missing tools and env vars, add the date and time zone, and surface the changelog and failing tests. Each one tested with the JSON Claude Code sends.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-sessionstart-hook-examples.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Claude Code SessionStart hook examples: 5 copy-paste hooks (tested)">
+<meta property="og:description" content="Five working SessionStart hooks for Claude Code: inject git branch and status, load project notes, warn about missing tools and env vars, add the date and time zone, and surface the changelog and failing tests. Each one tested with the JSON Claude Code sends.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-sessionstart-hook-examples.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Claude Code SessionStart hook examples: 5 copy-paste hooks (tested)", "description": "Five working SessionStart hooks for Claude Code: inject git branch and status, load project notes, warn about missing tools and env vars, add the date and time zone, and surface the changelog and failing tests. Each one tested with the JSON Claude Code sends.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/claude-code-sessionstart-hook-examples.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code SessionStart hook examples: 5 copy-paste hooks (tested)</h1>
+  <p class="lead">A SessionStart hook runs when a session begins or resumes. Whatever it prints becomes context Claude sees before your first prompt. Five small hooks, each tested by piping in the JSON Claude Code sends.</p>
+</header>
+<article>
+<h2>How a SessionStart hook works</h2>
+<p>Claude Code sends a JSON object on stdin with <code>session_id</code>, <code>transcript_path</code>, <code>cwd</code>, <code>hook_event_name</code> and <code>source</code>. <code>source</code> says why the session started:</p>
+<ul>
+  <li><code>startup</code>: a new session</li>
+  <li><code>resume</code>: <code>--resume</code>, <code>--continue</code> or <code>/resume</code></li>
+  <li><code>clear</code>: after <code>/clear</code></li>
+  <li><code>compact</code>: after auto or manual compaction</li>
+</ul>
+<p>The optional <code>matcher</code> is matched against <code>source</code>, so you can run a hook only on some of them. With <strong>exit 0</strong>, anything the hook prints to stdout is added to Claude's context. A hook can also print JSON with <code>{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "..."}}</code> (example 2). SessionStart cannot block anything; it only adds context, so a failing hook is harmless but also silent. Keep the output short: it is spent on every session. Register the scripts in <code>.claude/settings.json</code>; each example below shows its own entry.</p>
+<p class="note">Check the current hooks reference for details; this guide only uses the fields listed above.</p>
+
+<h2>1. Inject the git branch and status</h2>
+<p>Claude starts every session knowing which branch it is on, how dirty the tree is and what the last commits were, without spending a turn on <code>git status</code>. Prints nothing outside a git repo.</p>
+<pre><code>import json, subprocess, sys
+data = json.load(sys.stdin)
+cwd = data.get(&quot;cwd&quot;) or &quot;.&quot;
+def git(*args):
+    r = subprocess.run([&quot;git&quot;, *args], cwd=cwd, capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else None
+branch = git(&quot;rev-parse&quot;, &quot;--abbrev-ref&quot;, &quot;HEAD&quot;)
+if branch is None:
+    sys.exit(0)  # not a git repo: add nothing
+status = git(&quot;status&quot;, &quot;--porcelain&quot;) or &quot;&quot;
+changed = len(status.splitlines())
+log = git(&quot;log&quot;, &quot;-3&quot;, &quot;--oneline&quot;) or &quot;(no commits yet)&quot;
+print(f&quot;Git branch: {branch}. Uncommitted files: {changed}.&quot;)
+print(f&quot;Last commits:\n{log}&quot;)
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SessionStart&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/git_context.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;&#x27;$PWD&#x27;&quot;,&quot;hook_event_name&quot;:&quot;SessionStart&quot;,&quot;source&quot;:&quot;startup&quot;}&#x27; | python3 git_context.py; echo &quot;exit=$?&quot;
+Git branch: main. Uncommitted files: 2.
+Last commits:
+bd1fa1e first
+exit=0
+$ echo &#x27;{&quot;cwd&quot;:&quot;/tmp&quot;}&#x27; | python3 git_context.py; echo &quot;exit=$?&quot;   # not a repo
+exit=0</code></pre>
+
+<h2>2. Load your project notes (JSON output form)</h2>
+<p>Keeps a <code>NOTES.md</code> (or <code>TODO.md</code>) with "what I was doing, what is next". The matcher includes <code>compact</code> so the notes come back after Claude's context is compacted. Only the first 40 lines are used.</p>
+<pre><code>import json, os, sys
+data = json.load(sys.stdin)
+cwd = data.get(&quot;cwd&quot;) or &quot;.&quot;
+for name in (&quot;NOTES.md&quot;, &quot;TODO.md&quot;):
+    path = os.path.join(cwd, name)
+    if os.path.isfile(path):
+        with open(path, encoding=&quot;utf-8&quot;, errors=&quot;replace&quot;) as f:
+            text = &quot;&quot;.join(f.readlines()[:40])  # cap what goes into context
+        out = {&quot;hookSpecificOutput&quot;: {
+            &quot;hookEventName&quot;: &quot;SessionStart&quot;,
+            &quot;additionalContext&quot;: f&quot;Project notes from {name} (first 40 lines):\n{text}&quot;}}
+        print(json.dumps(out))
+        break
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SessionStart&quot;: [
+      {&quot;matcher&quot;: &quot;startup|clear|compact&quot;, &quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/load_notes.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;cwd&quot;:&quot;&#x27;$PWD&#x27;&quot;,&quot;source&quot;:&quot;startup&quot;}&#x27; | python3 load_notes.py; echo &quot;exit=$?&quot;
+{&quot;hookSpecificOutput&quot;: {&quot;hookEventName&quot;: &quot;SessionStart&quot;, &quot;additionalContext&quot;: &quot;Project notes from NOTES.md (first 40 lines):\nRemember: use uv\nNext: fix login\n&quot;}}
+exit=0</code></pre>
+
+<h2>3. Warn about missing tools and environment variables</h2>
+<p>Tells Claude up front that <code>node</code> or <code>DATABASE_URL</code> is missing, so it says so instead of failing three commands later. Edit the two lists for your project. Silent when everything is present.</p>
+<pre><code>import json, os, shutil, sys
+json.load(sys.stdin)  # input not needed here
+need_tools = [&quot;git&quot;, &quot;node&quot;, &quot;python3&quot;]
+need_vars = [&quot;DATABASE_URL&quot;, &quot;API_BASE_URL&quot;]
+missing = [t for t in need_tools if not shutil.which(t)]
+missing += [f&quot;${v}&quot; for v in need_vars if not os.environ.get(v)]
+if missing:
+    print(&quot;Environment check: missing &quot; + &quot;, &quot;.join(missing) +
+          &quot;. Tell the user before running anything that depends on them.&quot;)
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SessionStart&quot;: [
+      {&quot;matcher&quot;: &quot;startup&quot;, &quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/check_env.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{}&#x27; | python3 check_env.py; echo &quot;exit=$?&quot;
+Environment check: missing $DATABASE_URL, $API_BASE_URL. Tell the user before running anything that depends on them.
+exit=0
+$ echo &#x27;{}&#x27; | DATABASE_URL=x API_BASE_URL=y python3 check_env.py; echo &quot;exit=$?&quot;
+exit=0
+$ # PATH without git and node
+Environment check: missing git, node, $API_BASE_URL. Tell the user before running anything that depends on them.</code></pre>
+
+<h2>4. Add the date and time zone</h2>
+<p>Models do not reliably know today's date. This one-liner of context helps with "this week", log timestamps and changelog entries. It also echoes the <code>source</code> it received.</p>
+<pre><code>import datetime, json, sys
+data = json.load(sys.stdin)
+now = datetime.datetime.now().astimezone()
+print(f&quot;Session source: {data.get(&#x27;source&#x27;, &#x27;?&#x27;)}. &quot;
+      f&quot;Current local time: {now.strftime(&#x27;%Y-%m-%d %H:%M&#x27;)} {now.tzname()} (UTC{now.strftime(&#x27;%z&#x27;)}).&quot;)
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SessionStart&quot;: [
+      {&quot;matcher&quot;: &quot;startup|resume|clear&quot;, &quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/date_context.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;source&quot;:&quot;startup&quot;}&#x27; | python3 date_context.py; echo &quot;exit=$?&quot;
+Session source: startup. Current local time: 2026-11-14 18:18 UTC (UTC+0000).
+exit=0</code></pre>
+
+<h2>5. Show the latest changelog and last failing tests</h2>
+<p>Surfaces the top of <code>CHANGELOG.md</code> and, if pytest left a cache, how many tests failed in the last run. Both are cheap file reads; no tests are executed at startup.</p>
+<pre><code>import json, os, sys
+data = json.load(sys.stdin)
+cwd = data.get(&quot;cwd&quot;) or &quot;.&quot;
+parts = []
+cl = os.path.join(cwd, &quot;CHANGELOG.md&quot;)
+if os.path.isfile(cl):
+    with open(cl, encoding=&quot;utf-8&quot;, errors=&quot;replace&quot;) as f:
+        parts.append(&quot;Top of CHANGELOG.md:\n&quot; + &quot;&quot;.join(f.readlines()[:12]).strip())
+lf = os.path.join(cwd, &quot;.pytest_cache&quot;, &quot;v&quot;, &quot;cache&quot;, &quot;lastfailed&quot;)
+if os.path.isfile(lf):
+    try:
+        failed = list(json.load(open(lf)))
+    except ValueError:
+        failed = []
+    if failed:
+        parts.append(f&quot;{len(failed)} test(s) failed in the last pytest run, e.g. {failed[0]}&quot;)
+if parts:
+    print(&quot;\n\n&quot;.join(parts))
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SessionStart&quot;: [
+      {&quot;matcher&quot;: &quot;startup|resume&quot;, &quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/recent_changes.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;cwd&quot;:&quot;&#x27;$PWD&#x27;&quot;,&quot;source&quot;:&quot;startup&quot;}&#x27; | python3 recent_changes.py; echo &quot;exit=$?&quot;
+Top of CHANGELOG.md:
+# Changelog
+## 1.2.0
+- added foo
+
+1 test(s) failed in the last pytest run, e.g. tests/test_a.py::test_x
+exit=0</code></pre>
+
+<h2>Use several together</h2>
+<p>Put multiple entries in the same <code>SessionStart</code> array, or several matcher groups. Their output is combined into the session's context.</p>
+<h2>Before you trust a hook</h2>
+<p>Test each one by hand like above, then run the free <a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/hook_doctor.py">hook_doctor.py</a> on your settings file to catch missing scripts and relative paths. To check your whole setup at once, there is the <a href="https://apify.com/issea1015/agent-config-audit">agent-config-audit</a> Apify actor. If a hook still doesn't fire, see <a href="claude-code-hook-not-working.html">the 7-step checklist</a>.</p>
+
+<h2>Want tested hooks and skills ready to install?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> ships 3 tested safety hooks, 9 skills and 3 CLAUDE.md templates, with install steps that pass a clean-install QA, plus <code>audit.py</code>.</p>
+<h2>Related guides</h2>
+<ul>
+  <li><a href="claude-code-pretooluse-hook-examples.html">Claude Code PreToolUse hook examples: 5 copy-paste hooks</a></li>
+  <li><a href="claude-code-posttooluse-hook-examples.html">Claude Code PostToolUse hook examples: format, lint, test after every edit</a></li>
+  <li><a href="claude-code-userpromptsubmit-hook-examples.html">Claude Code UserPromptSubmit hook examples: block secrets, add context</a></li>
+  <li><a href="claude-code-stop-hook-examples.html">Claude Code Stop hook examples: keep Claude working until tests pass</a></li>
+  <li><a href="claude-code-hook-not-working.html">Claude Code hook not working? A 7-step debugging checklist</a></li>
+</ul>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-sessionstart">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
