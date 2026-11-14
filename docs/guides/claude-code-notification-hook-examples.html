@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code Notification hook examples: 5 copy-paste hooks (tested)</title>
+<meta name="description" content="Five working Notification hooks for Claude Code: desktop notifications, a terminal bell, a notification log, filtering permission and idle prompts, and a webhook from an env var. Each one tested with the JSON Claude Code sends.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-notification-hook-examples.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Claude Code Notification hook examples: 5 copy-paste hooks (tested)">
+<meta property="og:description" content="Five working Notification hooks for Claude Code: desktop notifications, a terminal bell, a notification log, filtering permission and idle prompts, and a webhook from an env var. Each one tested with the JSON Claude Code sends.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-notification-hook-examples.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Claude Code Notification hook examples: 5 copy-paste hooks (tested)", "description": "Five working Notification hooks for Claude Code: desktop notifications, a terminal bell, a notification log, filtering permission and idle prompts, and a webhook from an env var. Each one tested with the JSON Claude Code sends.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/claude-code-notification-hook-examples.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code Notification hook examples: 5 copy-paste hooks (tested)</h1>
+  <p class="lead">A Notification hook runs when Claude Code sends a notification, such as waiting for your approval or sitting idle. It is the place for desktop alerts, sounds, logs and webhooks. Five small hooks, each tested by piping in the JSON Claude Code sends.</p>
+</header>
+<article>
+<h2>How a Notification hook works</h2>
+<p>The Notification event fires when Claude Code sends a notification, for example when it is waiting for you to approve a tool use or has been idle. Besides the common fields (<code>session_id</code>, <code>transcript_path</code>, <code>cwd</code>, <code>hook_event_name</code>), the JSON on stdin has <code>message</code> (the notification text), an optional <code>title</code>, and <code>notification_type</code> saying which type fired:</p>
+<pre><code>{&quot;session_id&quot;: &quot;abc123&quot;, &quot;cwd&quot;: &quot;/Users/...&quot;, &quot;hook_event_name&quot;: &quot;Notification&quot;,
+ &quot;message&quot;: &quot;Claude needs your permission&quot;, &quot;title&quot;: &quot;Permission needed&quot;,
+ &quot;notification_type&quot;: &quot;permission_prompt&quot;}</code></pre>
+<p>The <code>matcher</code> is matched against <code>notification_type</code>; leave it out to run for every type. The two types you will use most:</p>
+<ul>
+  <li><code>permission_prompt</code>: Claude needs you to approve a tool use, and the prompt has waited about six seconds</li>
+  <li><code>idle_prompt</code>: Claude finished responding about 60 seconds ago and you have not typed since</li>
+</ul>
+<p>There are other types too (such as <code>auth_success</code> and <code>elicitation_dialog</code>); see the hooks reference for the full list. Notification hooks <strong>cannot block or modify</strong> a notification, and exit code 2 is ignored, so they are for side effects only. Claude Code also discards their <code>systemMessage</code> and <code>continue</code> output but still emits a <code>terminalSequence</code> field, which examples 2 and 4 use. That field only works in interactive sessions, not with <code>-p</code> or the Agent SDK. Register scripts in <code>.claude/settings.json</code>; each example shows its entry.</p>
+<p class="note">Check the current hooks reference for details; this guide only uses the fields listed above.</p>
+
+<h2>1. Desktop notification (macOS and Linux)</h2>
+<p>Pops a native notification with the message and title. Uses <code>osascript</code> on macOS and <code>notify-send</code> on Linux; does nothing if neither is available. Arguments are passed as separate arguments, never spliced into a shell string, so odd characters in the message cannot break the command.</p>
+<pre><code>import json, platform, shutil, subprocess, sys
+data = json.load(sys.stdin)
+title = data.get(&quot;title&quot;) or &quot;Claude Code&quot;
+message = data.get(&quot;message&quot;) or &quot;Needs your attention&quot;
+if platform.system() == &quot;Darwin&quot;:
+    script = &#x27;display notification (item 2 of argv) with title (item 1 of argv)&#x27;
+    cmd = [&quot;osascript&quot;, &quot;-e&quot;, &quot;on run argv&quot;, &quot;-e&quot;, script, &quot;-e&quot;, &quot;end run&quot;, title, message]
+elif shutil.which(&quot;notify-send&quot;):
+    cmd = [&quot;notify-send&quot;, title, message]
+else:
+    sys.exit(0)  # no notifier installed: do nothing
+subprocess.run(cmd, check=False)
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;Notification&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/desktop_notify.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;Notification&quot;,&quot;message&quot;:&quot;Claude needs your permission to use Bash&quot;,&quot;title&quot;:&quot;Permission needed&quot;,&quot;notification_type&quot;:&quot;permission_prompt&quot;}&#x27; | python3 desktop_notify.py; echo &quot;exit=$?&quot;
+exit=0
+$ cat stub.out   # notify-send was a stub script on PATH that records its arguments
+notify-send args: Permission needed Claude needs your permission to use Bash</code></pre>
+<p class="note">Tested with a stub <code>notify-send</code>, so the script logic is verified; the real popup depends on your desktop.</p>
+
+<h2>2. Terminal bell</h2>
+<p>The simplest alert: ask the terminal to ring its bell, using the <code>terminalSequence</code> output field. Many terminals turn the bell into a sound, a tab badge or a dock bounce.</p>
+<pre><code>import json, sys
+json.load(sys.stdin)
+print(json.dumps({&quot;terminalSequence&quot;: &quot;\a&quot;}))
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;Notification&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/bell.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;Notification&quot;,&quot;message&quot;:&quot;Claude needs your permission to use Bash&quot;,&quot;title&quot;:&quot;Permission needed&quot;,&quot;notification_type&quot;:&quot;permission_prompt&quot;}&#x27; | python3 bell.py; echo &quot;exit=$?&quot;
+{&quot;terminalSequence&quot;: &quot;\u0007&quot;}
+exit=0</code></pre>
+
+<h2>3. Log every notification to a file</h2>
+<p>Keeps a tab-separated history of what Claude asked for and when, in <code>.claude/notifications.log</code>. Handy for finding out how often a session sat waiting on you. Remember to git-ignore the file.</p>
+<pre><code>import datetime, json, os, sys
+data = json.load(sys.stdin)
+cwd = data.get(&quot;cwd&quot;) or &quot;.&quot;
+path = os.path.join(cwd, &quot;.claude&quot;, &quot;notifications.log&quot;)
+os.makedirs(os.path.dirname(path), exist_ok=True)
+stamp = datetime.datetime.now().astimezone().strftime(&quot;%Y-%m-%d %H:%M:%S&quot;)
+line = f&#x27;{stamp}\t{data.get(&quot;notification_type&quot;, &quot;?&quot;)}\t{data.get(&quot;message&quot;, &quot;&quot;)}&#x27;
+with open(path, &quot;a&quot;, encoding=&quot;utf-8&quot;) as f:
+    f.write(line.replace(&quot;\n&quot;, &quot; &quot;) + &quot;\n&quot;)
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;Notification&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/log_notification.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;Notification&quot;,&quot;message&quot;:&quot;Claude needs your permission to use Bash&quot;,&quot;title&quot;:&quot;Permission needed&quot;,&quot;notification_type&quot;:&quot;permission_prompt&quot;}&#x27; | python3 log_notification.py; echo &quot;exit=$?&quot;
+exit=0
+$ cat .claude/notifications.log
+2026-11-14 19:16:57	permission_prompt	Claude needs your permission to use Bash
+2026-11-14 19:16:57	idle_prompt	Claude is waiting for your input</code></pre>
+
+<h2>4. Only alert on permission and idle prompts</h2>
+<p>Set the matcher to <code>permission_prompt|idle_prompt</code> so the hook only runs for those two types. The script checks the type again, so it stays safe if you later widen the matcher, and it sends a different text for each. It uses the OSC 777 desktop-notification escape sequence through <code>terminalSequence</code>, the same approach as the example in the official docs; whether your terminal shows it depends on the terminal.</p>
+<pre><code>import json, sys
+data = json.load(sys.stdin)
+kind = data.get(&quot;notification_type&quot;)
+if kind == &quot;permission_prompt&quot;:
+    text = &quot;Approval needed: &quot; + data.get(&quot;message&quot;, &quot;&quot;)
+elif kind == &quot;idle_prompt&quot;:
+    text = &quot;Claude is waiting for your next prompt&quot;
+else:
+    sys.exit(0)  # ignore every other type
+print(json.dumps({&quot;terminalSequence&quot;: f&quot;\033]777;notify;Claude Code;{text}\a&quot;}))
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;Notification&quot;: [
+      {&quot;matcher&quot;: &quot;permission_prompt|idle_prompt&quot;, &quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/filter_notify.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;message&quot;:&quot;Claude needs your permission to use Bash&quot;,&quot;notification_type&quot;:&quot;permission_prompt&quot;}&#x27; | python3 filter_notify.py; echo &quot;exit=$?&quot;
+{&quot;terminalSequence&quot;: &quot;\u001b]777;notify;Claude Code;Approval needed: Claude needs your permission to use Bash\u0007&quot;}
+exit=0
+$ echo &#x27;{&quot;notification_type&quot;:&quot;idle_prompt&quot;}&#x27; | python3 filter_notify.py
+{&quot;terminalSequence&quot;: &quot;\u001b]777;notify;Claude Code;Claude is waiting for your next prompt\u0007&quot;}
+$ echo &#x27;{&quot;notification_type&quot;:&quot;auth_success&quot;}&#x27; | python3 filter_notify.py; echo &quot;exit=$?&quot;   # ignored
+exit=0</code></pre>
+
+<h2>5. Forward to a webhook (URL from an env var)</h2>
+<p>Posts a small JSON body to whatever URL is in <code>CLAUDE_NOTIFY_WEBHOOK</code>, for a chat bot, a phone push relay or your own endpoint. The URL stays out of your repo. If the variable is unset the hook does nothing, and a network failure is reported on stderr but never fails the session. Use a URL you control and keep it secret.</p>
+<pre><code>import json, os, sys, urllib.request
+data = json.load(sys.stdin)
+url = os.environ.get(&quot;CLAUDE_NOTIFY_WEBHOOK&quot;)
+if not url:
+    sys.exit(0)  # not configured: do nothing
+body = json.dumps({
+    &quot;text&quot;: data.get(&quot;message&quot;, &quot;&quot;),
+    &quot;type&quot;: data.get(&quot;notification_type&quot;, &quot;&quot;),
+    &quot;project&quot;: os.path.basename(data.get(&quot;cwd&quot;, &quot;&quot;)),
+}).encode()
+req = urllib.request.Request(url, body, {&quot;Content-Type&quot;: &quot;application/json&quot;})
+try:
+    urllib.request.urlopen(req, timeout=5)
+except Exception as e:
+    print(f&quot;webhook failed: {e}&quot;, file=sys.stderr)  # never fail the session
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;Notification&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/webhook.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;Notification&quot;,&quot;message&quot;:&quot;Claude needs your permission to use Bash&quot;,&quot;title&quot;:&quot;Permission needed&quot;,&quot;notification_type&quot;:&quot;permission_prompt&quot;}&#x27; | python3 webhook.py; echo &quot;exit=$?&quot;   # variable unset
+exit=0
+$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;Notification&quot;,&quot;message&quot;:&quot;Claude needs your permission to use Bash&quot;,&quot;title&quot;:&quot;Permission needed&quot;,&quot;notification_type&quot;:&quot;permission_prompt&quot;}&#x27; | CLAUDE_NOTIFY_WEBHOOK=http://127.0.0.1:8765/hook python3 webhook.py; echo &quot;exit=$?&quot;
+exit=0
+# the local test server received:
+POST {&quot;text&quot;: &quot;Claude needs your permission to use Bash&quot;, &quot;type&quot;: &quot;permission_prompt&quot;, &quot;project&quot;: &quot;proj&quot;}
+$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;Notification&quot;,&quot;message&quot;:&quot;Claude needs your permission to use Bash&quot;,&quot;title&quot;:&quot;Permission needed&quot;,&quot;notification_type&quot;:&quot;permission_prompt&quot;}&#x27; | CLAUDE_NOTIFY_WEBHOOK=http://127.0.0.1:1/hook python3 webhook.py; echo &quot;exit=$?&quot;
+webhook failed: &lt;urlopen error [Errno 111] Connection refused&gt;
+exit=0</code></pre>
+<p class="note">Tested against a throwaway server on localhost, not a real service.</p>
+
+<h2>Use several together</h2>
+<p>Put several entries in the same <code>Notification</code> array, or several matcher groups: for example the log on every type plus the desktop alert only on <code>permission_prompt</code>. Hooks that match run in parallel.</p>
+<h2>Before you trust a hook</h2>
+<p>Test each one by hand like above, then run the free <a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/hook_doctor.py">hook_doctor.py</a> on your settings file to catch missing scripts and relative paths. A webhook hook sends data out of your machine, so it is worth auditing: the <a href="https://github.com/issea1015/agent-hook-audit">agent-hook-audit</a> tool is free, and the <a href="https://apify.com/issea1015/agent-config-audit">agent-config-audit</a> Apify actor checks your whole setup at once. If a hook still doesn't fire, see <a href="claude-code-hook-not-working.html">the 7-step checklist</a>.</p>
+
+<h2>Want tested hooks and skills ready to install?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> ships 3 tested safety hooks, 9 skills and 3 CLAUDE.md templates, with install steps that pass a clean-install QA, plus <code>audit.py</code>.</p>
+<h2>Related guides</h2>
+<ul>
+  <li><a href="claude-code-pretooluse-hook-examples.html">Claude Code PreToolUse hook examples: 5 copy-paste hooks</a></li>
+  <li><a href="claude-code-posttooluse-hook-examples.html">Claude Code PostToolUse hook examples: format, lint, test after every edit</a></li>
+  <li><a href="claude-code-userpromptsubmit-hook-examples.html">Claude Code UserPromptSubmit hook examples: block secrets, add context</a></li>
+  <li><a href="claude-code-stop-hook-examples.html">Claude Code Stop hook examples: keep Claude working until tests pass</a></li>
+  <li><a href="claude-code-sessionstart-hook-examples.html">Claude Code SessionStart hook examples: inject git, notes and date at startup</a></li>
+  <li><a href="claude-code-hook-not-working.html">Claude Code hook not working? A 7-step debugging checklist</a></li>
+</ul>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-notification">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
