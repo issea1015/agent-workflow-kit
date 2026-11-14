@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download Hacker News comments as JSON (Algolia API + mention tracking)</title>
+<meta name="description" content="How to download Hacker News comments as JSON with the free Algolia HN Search API: search and search_by_date, tags and numericFilters, full comment trees from the items endpoint, a Python script, and a recipe to track mentions of your product.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/hacker-news-comments-json-export.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Download Hacker News comments as JSON (Algolia API + mention tracking)">
+<meta property="og:description" content="How to download Hacker News comments as JSON with the free Algolia HN Search API: search and search_by_date, tags and numericFilters, full comment trees from the items endpoint, a Python script, and a recipe to track mentions of your product.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/hacker-news-comments-json-export.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Download Hacker News comments as JSON (Algolia API + mention tracking)", "description": "How to download Hacker News comments as JSON with the free Algolia HN Search API: search and search_by_date, tags and numericFilters, full comment trees from the items endpoint, a Python script, and a recipe to track mentions of your product.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/hacker-news-comments-json-export.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Guides</a> · Data</p>
+  <h1>Download Hacker News comments as JSON</h1>
+  <p class="lead">Hacker News has a free, official search API with no key. Here is how to pull comments and whole threads as JSON, and how to set up simple monitoring for mentions of your product.</p>
+</header>
+<article>
+<h2>1. Search comments and stories</h2>
+<p>Hacker News has an official public search API powered by Algolia. No key, no login. Two endpoints:</p>
+<ul>
+  <li><code>https://hn.algolia.com/api/v1/search?query=...</code>: sorted by relevance (then points and comment count).</li>
+  <li><code>https://hn.algolia.com/api/v1/search_by_date?query=...</code>: newest first. Use this one for monitoring.</li>
+</ul>
+<p>Useful parameters:</p>
+<ul>
+  <li><code>tags=comment</code>, <code>tags=story</code>, <code>tags=show_hn</code>, <code>tags=ask_hn</code>. Comma means AND, e.g. <code>tags=story,show_hn</code>; parentheses mean OR, e.g. <code>tags=(story,comment)</code>. <code>tags=story_8863</code> limits results to one thread, <code>tags=author_pg</code> to one user.</li>
+  <li><code>numericFilters</code>: filter on <code>created_at_i</code> (Unix seconds), <code>points</code> and <code>num_comments</code>, e.g. <code>numericFilters=created_at_i&gt;1731000000,points&gt;=10</code>.</li>
+  <li><code>hitsPerPage</code> (up to 1000) and <code>page</code> (0-based). A query returns at most about 1000 hits in total, so narrow the time window instead of paging deeper.</li>
+  <li><code>restrictSearchableAttributes=url</code> finds stories linking to a domain: <code>query=example.com&amp;restrictSearchableAttributes=url</code>.</li>
+</ul>
+<pre><code>https://hn.algolia.com/api/v1/search_by_date?query=claude%20code&amp;tags=comment&amp;numericFilters=created_at_i%3E1731000000&amp;hitsPerPage=100</code></pre>
+<p>Each hit has <code>objectID</code>, <code>author</code>, <code>created_at</code>, <code>created_at_i</code>, <code>story_id</code>, <code>story_title</code>, <code>parent_id</code> and <code>comment_text</code> (HTML) for comments; stories have <code>title</code>, <code>url</code>, <code>points</code> and <code>num_comments</code>. The discussion link for any id is <code>https://news.ycombinator.com/item?id=&lt;objectID&gt;</code>. Search is full-text, so quote an exact phrase, and expect results to lag a few minutes behind the live site.</p>
+
+<h2>2. Get a full comment tree</h2>
+<p>Search returns comments one by one. To get a whole thread as a nested tree, use the items endpoint:</p>
+<pre><code>https://hn.algolia.com/api/v1/items/8863</code></pre>
+<p>The response is the story with a <code>children</code> array; each child is a comment with its own <code>children</code>, plus <code>author</code>, <code>text</code>, <code>created_at</code> and <code>parent_id</code>. Walk it recursively to flatten it with a depth.</p>
+
+<h2>3. A working Python script (standard library only)</h2>
+<pre><code>import html, json, re, urllib.parse, urllib.request
+
+def get(url):
+    with urllib.request.urlopen(url, timeout=30) as r:
+        return json.load(r)
+
+def strip(s):
+    s = re.sub(r"&lt;p&gt;", "\n\n", s or "")
+    return html.unescape(re.sub(r"&lt;[^&gt;]+&gt;", "", s))
+
+def flatten(node, depth=0, out=None):
+    out = [] if out is None else out
+    for c in node.get("children", []):
+        if c.get("text"):                       # deleted comments have no text
+            out.append({"id": c["id"], "parent": c["parent_id"], "depth": depth,
+                        "author": c["author"], "date": c["created_at"],
+                        "text": strip(c["text"])})
+        flatten(c, depth + 1, out)              # replies of deleted comments are kept
+    return out
+
+# one thread, flattened
+comments = flatten(get("https://hn.algolia.com/api/v1/items/8863"))
+print(len(comments), "comments")
+
+# search: newest comments mentioning a phrase
+q = urllib.parse.urlencode({"query": '"claude code"', "tags": "comment", "hitsPerPage": 50})
+for h in get("https://hn.algolia.com/api/v1/search_by_date?" + q)["hits"]:
+    print(h["created_at"], h["author"], "https://news.ycombinator.com/item?id=" + h["objectID"])</code></pre>
+<p>The text fields are HTML (<code>&lt;p&gt;</code>, <code>&lt;a&gt;</code>, <code>&lt;i&gt;</code>, entities), which is why the script strips tags and unescapes entities.</p>
+
+<h2>4. A mention-monitoring recipe</h2>
+<ol>
+  <li>List the strings that mean you: your product name, your domain, your handle, key competitors. Use quoted phrases for names that are common words.</li>
+  <li>Once an hour or day, call <code>search_by_date</code> twice per string: once with <code>tags=comment</code>, once with <code>tags=story</code>. Set <code>numericFilters=created_at_i&gt;LAST_RUN</code>, where <code>LAST_RUN</code> is the Unix time of your previous run.</li>
+  <li>Store seen <code>objectID</code>s so a retry never reports the same hit twice.</li>
+  <li>For each new story that matters, fetch the full tree with the items endpoint and see who replied and how.</li>
+  <li>Send new hits to Slack, email or a file. A cron job is enough.</li>
+  <li>Check for false positives: a short brand word will match unrelated threads. Filter by points or require a second word.</li>
+</ol>
+<p>For stories that link to your site, search the domain with <code>restrictSearchableAttributes=url</code> and <code>tags=story</code>: it shows who posted you, with points and comment counts.</p>
+
+<h2>The shortcut: many queries in one run</h2>
+<p>If you'd rather not run and maintain this yourself, the <a href="https://apify.com/issea1015/hacker-news-thread-digest">Hacker News Thread &amp; Comment Digest</a> actor on Apify uses the same public API. Give it any number of keyword queries and domains (up to 100 queries), a time window, a minimum score and a Show HN / Ask HN filter. It returns:</p>
+<ul>
+  <li><strong>Story rows</strong>: title, link, domain, author, points, comment count, date, discussion link.</li>
+  <li><strong>Flattened comment rows</strong> (optional): depth, parent id, author, date and clean text with HTML removed, ready for sentiment analysis or an LLM.</li>
+  <li><strong>A digest row per story</strong>: top-level comments, maximum depth, unique commenters, top commenters, whether the author replied, minutes to the first comment and points per hour.</li>
+</ul>
+<p>Export JSON, CSV or Excel, or schedule it to run daily. Pricing is per result: $0.0006 per story, $0.0002 per comment, $0.003 per digest row. Failed queries are not charged. Comments are off by default, so a digest-only run stays cheap.</p>
+<pre><code>{"queries": ["claude code", "apify"], "domains": ["example.com"], "timeWindowDays": 7, "includeComments": true}</code></pre>
+<p class="note">Only public Hacker News data.</p>
+
+<h2>Related guides</h2>
+<ul>
+  <li><a href="export-app-store-reviews-csv-json.html">Export App Store reviews to CSV or JSON</a></li>
+  <li><a href="sec-form-4-insider-trades-json-csv.html">Get SEC Form 4 insider trades as JSON or CSV</a></li>
+</ul>
+
+</article>
+<footer>Independent guide, not affiliated with Hacker News or Y Combinator.</footer>
+</main>
+</body>
+</html>

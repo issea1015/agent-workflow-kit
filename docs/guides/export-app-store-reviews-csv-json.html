@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Export App Store reviews to CSV or JSON (free, all countries)</title>
+<meta name="description" content="How to download iOS app reviews as CSV or JSON from Apple's public customer-reviews feed: the URL, the 500-per-country limit, the iTunes Lookup API for app metadata, a Python script, and a no-code way to run many apps and countries.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/export-app-store-reviews-csv-json.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Export App Store reviews to CSV or JSON (free, all countries)">
+<meta property="og:description" content="How to download iOS app reviews as CSV or JSON from Apple&#x27;s public customer-reviews feed: the URL, the 500-per-country limit, the iTunes Lookup API for app metadata, a Python script, and a no-code way to run many apps and countries.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/export-app-store-reviews-csv-json.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Export App Store reviews to CSV or JSON (free, all countries)", "description": "How to download iOS app reviews as CSV or JSON from Apple's public customer-reviews feed: the URL, the 500-per-country limit, the iTunes Lookup API for app metadata, a Python script, and a no-code way to run many apps and countries.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/export-app-store-reviews-csv-json.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Guides</a> · Data</p>
+  <h1>Export App Store reviews to CSV or JSON</h1>
+  <p class="lead">Apple has no export button for reviews, but it does publish a free JSON feed of every app's recent reviews, one country at a time. Here is how to use it, where it stops, and how to scale it to many apps and countries.</p>
+</header>
+<article>
+<h2>1. Find the app id</h2>
+<p>Every App Store app has a numeric id. It is the number after <code>id</code> in the store URL: <code>https://apps.apple.com/us/app/facebook/id284882215</code> is app <code>284882215</code>. The iTunes Lookup API returns the app's metadata (name, developer, version, average rating, rating count) as JSON, with no key and no login:</p>
+<pre><code>https://itunes.apple.com/lookup?id=284882215&amp;country=us</code></pre>
+<p>Look in <code>results[0]</code> for <code>trackName</code>, <code>sellerName</code>, <code>version</code>, <code>averageUserRating</code>, <code>userRatingCount</code> and <code>releaseNotes</code>. You can also pass several ids at once: <code>?id=284882215,310633997</code>.</p>
+
+<h2>2. Read the customer-reviews feed</h2>
+<p>Apple publishes each app's reviews as a public RSS feed that can return JSON. One country, one page of up to 50 reviews:</p>
+<pre><code>https://itunes.apple.com/us/rss/customerreviews/page=1/id=284882215/sortby=mostrecent/json</code></pre>
+<p>Change <code>us</code> to any store country code (<code>gb</code>, <code>de</code>, <code>jp</code>, ...) and <code>page=</code> from 1 to 10. Each review is an object in <code>feed.entry</code> with the rating (<code>im:rating</code>), title, text (<code>content</code>), author name, app version (<code>im:version</code>), date (<code>updated</code>) and helpful votes (<code>im:voteCount</code>). Each value is wrapped as <code>{"label": "..."}</code>.</p>
+<p>One quirk: on some pages the first entry describes the app itself instead of a review. It has no <code>im:rating</code>, so skip entries without one.</p>
+
+<h2>3. What the feed cannot do</h2>
+<ul>
+  <li><strong>Recent reviews only.</strong> 10 pages of 50 is about 500 reviews per app and per country, newest first. Older reviews are not exposed here. If you need history, collect on a schedule and keep what you collected.</li>
+  <li><strong>One country at a time.</strong> There is no "all countries" feed. Reviews are per storefront, so you loop over country codes yourself.</li>
+  <li><strong>Reviews only, no replies.</strong> Developer responses are not part of this feed.</li>
+  <li><strong>Be gentle.</strong> There is no published rate limit for the feed, but the Lookup and Search APIs are documented at roughly 20 calls per minute. Pause between requests and retry on errors.</li>
+  <li>Reviews are public user content. Use them in line with applicable law and Apple's terms.</li>
+</ul>
+
+<h2>4. A working Python script (standard library only)</h2>
+<p>This fetches up to 10 pages for one app and one country and writes a CSV. It stops early when a page comes back empty or fails.</p>
+<pre><code>import csv, json, time, urllib.request
+
+APP, COUNTRY = "284882215", "us"
+URL = "https://itunes.apple.com/{c}/rss/customerreviews/page={p}/id={a}/sortby=mostrecent/json"
+
+def label(node, *path):
+    for k in path:
+        node = (node or {}).get(k)
+    return node.get("label") if isinstance(node, dict) else node
+
+rows = []
+for page in range(1, 11):
+    try:
+        with urllib.request.urlopen(URL.format(c=COUNTRY, p=page, a=APP), timeout=30) as r:
+            feed = json.load(r)["feed"]
+    except Exception:
+        break                      # past the last page, or a transient error
+    entries = feed.get("entry") or []
+    if isinstance(entries, dict):  # a single entry comes back as an object
+        entries = [entries]
+    got = 0
+    for e in entries:
+        if label(e, "im:rating") is None:
+            continue               # app description entry, not a review
+        got += 1
+        rows.append({
+            "country": COUNTRY, "id": label(e, "id"),
+            "rating": int(label(e, "im:rating")),
+            "title": label(e, "title"), "text": label(e, "content"),
+            "author": label(e, "author", "name"),
+            "version": label(e, "im:version"), "date": label(e, "updated"),
+            "votes": label(e, "im:voteCount"),
+        })
+    if got == 0:
+        break
+    time.sleep(1)
+
+with open("reviews.csv", "w", newline="", encoding="utf-8") as f:
+    w = csv.DictWriter(f, fieldnames=list(rows[0]) if rows else ["id"])
+    w.writeheader(); w.writerows(rows)
+print(len(rows), "reviews")</code></pre>
+
+<h2>5. Many apps and many countries</h2>
+<p>Wrap the loop in two more loops: for each app id, for each country code, fetch pages 1 to 10, and add <code>appId</code> to every row so one CSV holds everything. Two practical notes:</p>
+<ul>
+  <li>The cost is requests: 20 apps in 10 countries is 200 app-country pairs, up to 2,000 page requests. Sleep between calls and cache what you already fetched.</li>
+  <li>De-duplicate on the review <code>id</code> when you run it on a schedule, so each day's file only adds new reviews. Track the share of 1-2 star reviews per app version to notice a bad release early.</li>
+</ul>
+
+<h2>Do it for many apps and countries without code</h2>
+<p>If you'd rather not maintain the loops, retries and pacing, the <a href="https://apify.com/issea1015/appstore-reviews-ratings">App Store Reviews, App Info &amp; ASO Keyword Rank</a> actor on Apify does this for you. It uses the same public feeds and the documented iTunes APIs, with no login. Paste up to 100 app ids or App Store URLs, pick up to 50 countries, and export JSON, CSV or Excel, or schedule it.</p>
+<ul>
+  <li><strong>Reviews</strong> per app and country, newest first, with an optional star filter (for example only 1-2 star reviews).</li>
+  <li><strong>Summary row</strong> per app and country: average of the collected reviews, 1-5 star histogram, share of low ratings and most reviewed versions.</li>
+  <li><strong>App info</strong> mode: version, release notes, price, category, rating count, size, minimum OS. <strong>Keyword rank</strong> mode: where your apps rank in App Store search for your keywords, per country.</li>
+</ul>
+<p>Pricing is pay per result: $0.0003 per review ($0.30 per 1,000), $0.002 per app summary, $0.001 per app info row, $0.001 per keyword rank check. Apps that fail or are not found are not charged. It has the same limit as the free method: about the 500 most recent reviews per app and country.</p>
+<pre><code>{"appIds": ["284882215", "https://apps.apple.com/us/app/example/id310633997"], "countries": ["us", "gb", "de"], "maxRating": 2}</code></pre>
+
+<h2>Related guides</h2>
+<ul>
+  <li><a href="hacker-news-comments-json-export.html">Download Hacker News comments as JSON (and track mentions of your product)</a></li>
+  <li><a href="sec-form-4-insider-trades-json-csv.html">Get SEC Form 4 insider trades as JSON or CSV</a></li>
+</ul>
+
+</article>
+<footer>Independent guide, not affiliated with Apple.</footer>
+</main>
+</body>
+</html>
