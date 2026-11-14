@@ -84,6 +84,9 @@ audited 2 hook command(s) in 1 file(s): FAIL (2 high, 0 other)</code></pre>
 <h2>4. Block the worst commands before they run (free)</h2>
 <p>Auditing finds bad hooks. A good hook can also protect you: <a href="https://github.com/issea1015/guard-dangerous-bash">guard-dangerous-bash</a> is a ~50-line PreToolUse hook that blocks <code>rm -rf ~</code>, force-pushes to main and <code>curl | sh</code> before Claude Code runs them. Setup and testing: <a href="block-dangerous-commands-claude-code.html">how to block destructive commands</a>.</p>
 
+<h2>5. Audit many repos at once, in the cloud (pay per repo)</h2>
+<p>Checking a whole org or a list of skill repos you are about to install? The same checks run as an Apify actor: paste GitHub repo URLs, get one row per repo with every finding and a severity, as JSON/CSV. Nothing to install, $0.05 per audited repo, failed repos are not charged: <a href="https://apify.com/issea1015/agent-config-audit">Claude Code Hooks &amp; Skills Security Audit on Apify</a>.</p>
+
 <h2>Related guides</h2>
 <ul>
   <li><a href="block-dangerous-commands-claude-code.html">How to stop Claude Code from running rm -rf and other destructive commands</a></li>

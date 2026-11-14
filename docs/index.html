@@ -89,6 +89,7 @@ MEDIUM script-subprocess ~/.claude/settings.json hooks.PostToolUse[0]: format.py
 audited 5 hook command(s) in 2 file(s): FAIL (1 high, 1 other)</code></pre>
   <p>A hook keeps running after the skill that installed it is deleted. Skill registries scan skill code; <code>--settings</code> checks the hook configurations themselves, and the scripts they call.</p>
   <p>Standard library only. No telemetry, no network calls. Every script has automated tests.</p>
+  <p>Need to audit many repos without installing anything? Run the same checks in the cloud: <a href="https://apify.com/issea1015/agent-config-audit">Security Audit actor on Apify</a> ($0.05 per repo).</p>
 </section>
 
 <section>
