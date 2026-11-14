@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get SEC Form 4 insider trades as JSON or CSV (free EDGAR API)</title>
+<meta name="description" content="How to pull insider buys and sells (SEC Form 4) for a list of tickers from the free EDGAR API: the endpoints, the User-Agent rule, parsing the XML, and filtering out grants and tax withholding. Plus a no-code option that returns flat rows.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/sec-form-4-insider-trades-json-csv.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Get SEC Form 4 insider trades as JSON or CSV (free EDGAR API)">
+<meta property="og:description" content="How to pull insider buys and sells (SEC Form 4) for a list of tickers from the free EDGAR API: the endpoints, the User-Agent rule, parsing the XML, and filtering out grants and tax withholding. Plus a no-code option that returns flat rows.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/sec-form-4-insider-trades-json-csv.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Get SEC Form 4 insider trades as JSON or CSV (free EDGAR API)", "description": "How to pull insider buys and sells (SEC Form 4) for a list of tickers from the free EDGAR API: the endpoints, the User-Agent rule, parsing the XML, and filtering out grants and tax withholding. Plus a no-code option that returns flat rows.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/sec-form-4-insider-trades-json-csv.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Guides</a> · Data</p>
+  <h1>Get SEC Form 4 insider trades as JSON or CSV</h1>
+  <p class="lead">Every time a CEO, CFO, director or 10% owner of a US-listed company buys or sells shares, they file a Form 4 with the SEC within two business days. The data is public and free. Getting it into a spreadsheet takes a few steps; here they are, plus a shortcut.</p>
+</header>
+<article>
+<h2>1. Map tickers to CIK numbers</h2>
+<p>EDGAR identifies companies by CIK, not ticker. The SEC publishes the mapping as one JSON file: <code>https://www.sec.gov/files/company_tickers.json</code>. Pad the CIK to 10 digits for the next step (NVDA is <code>0001045810</code>).</p>
+
+<h2>2. List the company's recent filings</h2>
+<p><code>https://data.sec.gov/submissions/CIK0001045810.json</code> returns the company's recent filings as parallel arrays (<code>form</code>, <code>accessionNumber</code>, <code>filingDate</code>, <code>primaryDocument</code>). Keep the rows where <code>form</code> is <code>4</code>.</p>
+<p><strong>Fair-access rules:</strong> the SEC asks every automated client to send a <code>User-Agent</code> header that names you and gives a contact email, and to stay under 10 requests per second. Requests without it get blocked.</p>
+<pre><code>import json, urllib.request
+UA = {"User-Agent": "Your Name your.email@example.com"}
+def get(url):
+    return json.load(urllib.request.urlopen(urllib.request.Request(url, headers=UA)))
+sub = get("https://data.sec.gov/submissions/CIK0001045810.json")
+r = sub["filings"]["recent"]
+form4 = [(r["accessionNumber"][i], r["filingDate"][i]) for i, f in enumerate(r["form"]) if f == "4"]</code></pre>
+
+<h2>3. Parse the Form 4 XML</h2>
+<p>Each filing sits under <code>https://www.sec.gov/Archives/edgar/data/&lt;CIK&gt;/&lt;accession without dashes&gt;/</code> and contains an XML document. Each <code>nonDerivativeTransaction</code> element is one trade: <code>transactionDate</code>, <code>transactionCode</code>, <code>transactionShares</code>, <code>transactionPricePerShare</code>, <code>transactionAcquiredDisposedCode</code> (A or D) and <code>sharesOwnedFollowingTransaction</code>. The insider's name and role (<code>isOfficer</code>, <code>officerTitle</code>, <code>isDirector</code>, <code>isTenPercentOwner</code>) are under <code>reportingOwner</code>.</p>
+
+<h2>4. Filter to real buys and sells</h2>
+<p>Most Form 4 rows aren't market trades. The transaction code tells you which are:</p>
+<ul>
+  <li><strong>P</strong>: open-market purchase. The one most people look for.</li>
+  <li><strong>S</strong>: open-market sale.</li>
+  <li><strong>A</strong>: grant or award. <strong>M</strong>: option exercise. <strong>F</strong>: shares withheld for tax. <strong>G</strong>: gift.</li>
+</ul>
+<p>Keep P and S, multiply shares by price for a dollar value, and sum per ticker: net buying by several insiders within a few weeks ("cluster buying") is the pattern screeners usually watch.</p>
+
+<h2>The shortcut: one run, flat rows</h2>
+<p>If you'd rather not maintain a parser, the <a href="https://apify.com/issea1015/sec-insider-trades-fundamentals">SEC Insider Trades &amp; Fundamentals</a> actor on Apify does steps 1–4 for a whole watchlist. Give it tickers, it returns one row per trade (insider, role, code with a plain-English type, shares, price, USD value, shares owned after, accession number), an optional net-buying summary per ticker, and the latest 10-K fundamentals with margins and growth. Export as JSON, CSV or Excel, or schedule it daily. It's billed per result row; unknown tickers are reported and not charged.</p>
+<pre><code>{"tickers": ["AAPL", "NVDA", "TSLA"], "mode": "both", "daysBack": 30}</code></pre>
+<p class="note">All data is public SEC information. Nothing here is investment advice.</p>
+
+<h2>Related tools</h2>
+<ul>
+  <li><a href="https://apify.com/issea1015/appstore-reviews-ratings">App Store reviews, app info and ASO keyword rank</a> (Apify)</li>
+  <li><a href="https://apify.com/issea1015/hacker-news-thread-digest">Hacker News thread and comment digest</a> (Apify)</li>
+</ul>
+</article>
+<footer>Independent guide, not affiliated with the SEC.</footer>
+</main>
+</body>
+</html>
