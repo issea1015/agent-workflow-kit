@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code PreCompact hook examples: back up and carry context across /compact (tested)</title>
+<meta name="description" content="Five working PreCompact hooks for Claude Code: back up the transcript, log every compaction, prune old backups, and save your recent requests so a SessionStart hook restores them after compaction. Each one tested with the JSON Claude Code sends.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-precompact-hook-examples.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Claude Code PreCompact hook examples: back up and carry context across /compact (tested)">
+<meta property="og:description" content="Five working PreCompact hooks for Claude Code: back up the transcript, log every compaction, prune old backups, and save your recent requests so a SessionStart hook restores them after compaction. Each one tested with the JSON Claude Code sends.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-precompact-hook-examples.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Claude Code PreCompact hook examples: back up and carry context across /compact (tested)", "description": "Five working PreCompact hooks for Claude Code: back up the transcript, log every compaction, prune old backups, and save your recent requests so a SessionStart hook restores them after compaction. Each one tested with the JSON Claude Code sends.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/claude-code-precompact-hook-examples.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code PreCompact hook examples: back up and carry context across /compact (tested)</h1>
+  <p class="lead">A PreCompact hook runs right before Claude Code compacts the conversation, either when you type <code>/compact</code> or when the context window fills up. It is your last chance to save what the summary may drop. Five small hooks, each tested by piping in the JSON Claude Code sends.</p>
+</header>
+<article>
+<h2>How a PreCompact hook works</h2>
+<p>Besides the common fields (<code>session_id</code>, <code>transcript_path</code>, <code>cwd</code>, <code>hook_event_name</code>), the JSON on stdin has <code>trigger</code> and <code>custom_instructions</code>:</p>
+<pre><code>{&quot;session_id&quot;: &quot;abc123&quot;, &quot;transcript_path&quot;: &quot;~/.claude/projects/.../abc123.jsonl&quot;,
+ &quot;cwd&quot;: &quot;/Users/...&quot;, &quot;hook_event_name&quot;: &quot;PreCompact&quot;,
+ &quot;trigger&quot;: &quot;manual&quot;, &quot;custom_instructions&quot;: &quot;keep the deploy decisions&quot;}</code></pre>
+<ul>
+  <li><code>trigger</code> is <code>manual</code> (you ran <code>/compact</code>) or <code>auto</code> (the context window was full). The <code>matcher</code> is matched against it, so <code>"matcher": "auto"</code> runs a hook only on automatic compaction.</li>
+  <li><code>custom_instructions</code> is the text you typed after <code>/compact</code>; it is empty for automatic compaction.</li>
+  <li><code>transcript_path</code> points at the session transcript, a JSONL file with one entry per line. It still holds the full conversation when the hook runs.</li>
+</ul>
+<p>The examples below are side effects only: they save files and always exit 0, so they never get in the way of compaction. To bring saved context back <em>after</em> compaction, pair them with a SessionStart hook using the <code>compact</code> matcher (example 5). Register scripts in <code>.claude/settings.json</code>; each example shows its entry.</p>
+<p class="note">Check the current hooks reference for details; this guide only uses the fields listed above. The transcript format is internal and may change, so example 4 reads it defensively.</p>
+<h2>1. Back up the full transcript before it is compacted</h2>
+<p>Copies the transcript to <code>.claude/transcripts/&lt;session&gt;-&lt;time&gt;-&lt;trigger&gt;.jsonl</code>, so the full conversation is still on disk after the summary replaces it. Transcripts can contain secrets and code, so git-ignore the folder.</p>
+<pre><code>import datetime, json, os, shutil, sys
+data = json.load(sys.stdin)
+src = data.get(&quot;transcript_path&quot;)
+if not src or not os.path.isfile(src):
+    sys.exit(0)  # nothing to back up
+dest_dir = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;transcripts&quot;)
+os.makedirs(dest_dir, exist_ok=True)
+stamp = datetime.datetime.now().strftime(&quot;%Y%m%d-%H%M%S&quot;)
+name = f&#x27;{data.get(&quot;session_id&quot;, &quot;session&quot;)}-{stamp}-{data.get(&quot;trigger&quot;, &quot;x&quot;)}.jsonl&#x27;
+shutil.copy2(src, os.path.join(dest_dir, name))
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;PreCompact&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/backup_transcript.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;PreCompact&quot;,&quot;trigger&quot;:&quot;manual&quot;,&quot;custom_instructions&quot;:&quot;keep the deploy decisions&quot;}&#x27; | python3 backup_transcript.py; echo &quot;exit=$?&quot;
+exit=0
+$ ls .claude/transcripts
+s1-20261114-221713-manual.jsonl
+$ echo &#x27;{&quot;cwd&quot;:&quot;$PWD&quot;,&quot;trigger&quot;:&quot;auto&quot;}&#x27; | python3 backup_transcript.py; echo &quot;exit=$?&quot;   # no transcript: nothing to do
+exit=0</code></pre>
+<h2>2. Log every compaction</h2>
+<p>Appends one tab-separated line per compaction to <code>.claude/compactions.log</code>: time, trigger, transcript size and your <code>/compact</code> instructions. If you see many <code>auto</code> lines, your sessions are running long and it may be time to split work or trim CLAUDE.md.</p>
+<pre><code>import datetime, json, os, sys
+data = json.load(sys.stdin)
+path = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;compactions.log&quot;)
+os.makedirs(os.path.dirname(path), exist_ok=True)
+size = 0
+t = data.get(&quot;transcript_path&quot;)
+if t and os.path.isfile(t):
+    size = os.path.getsize(t)
+stamp = datetime.datetime.now().astimezone().strftime(&quot;%Y-%m-%d %H:%M:%S&quot;)
+note = (data.get(&quot;custom_instructions&quot;) or &quot;&quot;).replace(&quot;\n&quot;, &quot; &quot;)
+with open(path, &quot;a&quot;, encoding=&quot;utf-8&quot;) as f:
+    f.write(f&#x27;{stamp}\t{data.get(&quot;trigger&quot;, &quot;?&quot;)}\t{size} bytes\t{note}\n&#x27;)
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;PreCompact&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/log_compact.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;PreCompact&quot;,&quot;trigger&quot;:&quot;manual&quot;,&quot;custom_instructions&quot;:&quot;keep the deploy decisions&quot;}&#x27; | python3 log_compact.py
+$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;PreCompact&quot;,&quot;trigger&quot;:&quot;auto&quot;,&quot;custom_instructions&quot;:&quot;&quot;}&#x27; | python3 log_compact.py
+$ cat .claude/compactions.log
+2026-11-14 22:17:19	manual	493 bytes	keep the deploy decisions
+2026-11-14 22:17:19	auto	493 bytes</code></pre>
+<h2>3. Keep only the newest backups (auto compaction only)</h2>
+<p>Backups add up. This one deletes all but the newest 10 files in <code>.claude/transcripts</code>. The entry below also shows the matcher: the backup (example 1) and the prune both run on <code>auto</code> only, in the same group. Hooks that match run in parallel, so the prune may see the folder before the new backup lands; that only means it keeps 11 for a moment.</p>
+<pre><code>import glob, json, os, sys
+KEEP = 10  # newest backups to keep
+data = json.load(sys.stdin)
+folder = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;transcripts&quot;)
+files = sorted(glob.glob(os.path.join(folder, &quot;*.jsonl&quot;)), key=os.path.getmtime, reverse=True)
+for old in files[KEEP:]:
+    os.remove(old)
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;PreCompact&quot;: [
+      {&quot;matcher&quot;: &quot;auto&quot;, &quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/backup_transcript.py&quot;},
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/prune_backups.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ ls .claude/transcripts | wc -l
+13
+$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;PreCompact&quot;,&quot;trigger&quot;:&quot;manual&quot;,&quot;custom_instructions&quot;:&quot;keep the deploy decisions&quot;}&#x27; | python3 prune_backups.py; echo &quot;exit=$?&quot;
+exit=0
+$ ls .claude/transcripts | wc -l
+10</code></pre>
+<h2>4. Save your recent requests as a handoff note</h2>
+<p>Summaries sometimes lose the exact wording of what you asked. This hook reads the transcript, keeps your last 5 typed prompts (it skips tool results and lines it cannot parse), and writes them to <code>.claude/handoff.md</code>.</p>
+<pre><code>import json, os, sys
+N = 5  # how many of your recent prompts to keep
+data = json.load(sys.stdin)
+prompts = []
+t = data.get(&quot;transcript_path&quot;)
+if t and os.path.isfile(t):
+    with open(t, encoding=&quot;utf-8&quot;) as f:
+        for line in f:
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if entry.get(&quot;type&quot;) != &quot;user&quot;:
+                continue
+            content = (entry.get(&quot;message&quot;) or {}).get(&quot;content&quot;)
+            if isinstance(content, list):  # skip tool results, keep text parts
+                content = &quot; &quot;.join(c.get(&quot;text&quot;, &quot;&quot;) for c in content
+                                   if isinstance(c, dict) and c.get(&quot;type&quot;) == &quot;text&quot;)
+            if isinstance(content, str) and content.strip():
+                prompts.append(content.strip().replace(&quot;\n&quot;, &quot; &quot;)[:300])
+path = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;handoff.md&quot;)
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, &quot;w&quot;, encoding=&quot;utf-8&quot;) as f:
+    f.write(&quot;Recent requests before compaction:\n&quot;)
+    f.writelines(f&quot;- {p}\n&quot; for p in prompts[-N:])
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;PreCompact&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/save_handoff.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ cat /tmp/t.jsonl   # test transcript: 3 prompts, 1 tool result, 1 bad line
+{&quot;type&quot;:&quot;user&quot;,&quot;message&quot;:{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;Add a --dry-run flag to deploy.py&quot;}}
+{&quot;type&quot;:&quot;assistant&quot;,&quot;message&quot;:{&quot;role&quot;:&quot;assistant&quot;,&quot;content&quot;:[{&quot;type&quot;:&quot;text&quot;,&quot;text&quot;:&quot;Sure.&quot;}]}}
+{&quot;type&quot;:&quot;user&quot;,&quot;message&quot;:{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:[{&quot;type&quot;:&quot;tool_result&quot;,&quot;tool_use_id&quot;:&quot;t1&quot;,&quot;content&quot;:&quot;ok&quot;}]}}
+{&quot;type&quot;:&quot;user&quot;,&quot;message&quot;:{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:[{&quot;type&quot;:&quot;text&quot;,&quot;text&quot;:&quot;Keep the old behaviour as default&quot;}]}}
+not json
+{&quot;type&quot;:&quot;user&quot;,&quot;message&quot;:{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;Now write tests for it&quot;}}
+$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;PreCompact&quot;,&quot;trigger&quot;:&quot;manual&quot;,&quot;custom_instructions&quot;:&quot;keep the deploy decisions&quot;}&#x27; | python3 save_handoff.py; echo &quot;exit=$?&quot;
+exit=0
+$ cat .claude/handoff.md
+Recent requests before compaction:
+- Add a --dry-run flag to deploy.py
+- Keep the old behaviour as default
+- Now write tests for it</code></pre>
+<h2>5. Restore the note after compaction (SessionStart)</h2>
+<p>When compaction finishes, Claude Code fires SessionStart with <code>source</code> set to <code>compact</code>. A SessionStart hook's stdout is added to Claude's context, so this one prints the handoff note back in. Register it under <code>SessionStart</code> with the <code>compact</code> matcher.</p>
+<pre><code>import json, os, sys
+data = json.load(sys.stdin)
+path = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;handoff.md&quot;)
+if not os.path.isfile(path):
+    sys.exit(0)
+with open(path, encoding=&quot;utf-8&quot;) as f:
+    print(f.read())  # SessionStart stdout is added to Claude&#x27;s context
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SessionStart&quot;: [
+      {&quot;matcher&quot;: &quot;compact&quot;, &quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/restore_handoff.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SessionStart&quot;,&quot;source&quot;:&quot;compact&quot;}&#x27; | python3 restore_handoff.py; echo &quot;exit=$?&quot;
+Recent requests before compaction:
+- Add a --dry-run flag to deploy.py
+- Keep the old behaviour as default
+- Now write tests for it
+
+exit=0</code></pre>
+<p class="note">More SessionStart ideas (git status, notes, today's date) are in <a href="claude-code-sessionstart-hook-examples.html">the SessionStart guide</a>.</p>
+<h2>Before you trust a hook</h2>
+<p>Test each one by hand like above, then run the free <a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/hook_doctor.py">hook_doctor.py</a> on your settings file to catch missing scripts and relative paths. Hooks that copy transcripts handle sensitive data, so audit them: the <a href="https://github.com/issea1015/agent-hook-audit">agent-hook-audit</a> tool is free, and the <a href="https://apify.com/issea1015/agent-config-audit">agent-config-audit</a> Apify actor checks your whole setup at once. If a hook still doesn't fire, see <a href="claude-code-hook-not-working.html">the 7-step checklist</a>.</p>
+
+<h2>Want tested hooks and skills ready to install?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> ships 3 tested safety hooks, 9 skills and 3 CLAUDE.md templates, with install steps that pass a clean-install QA, plus <code>audit.py</code>.</p>
+<h2>Related guides</h2>
+<ul>
+  <li><a href="claude-code-sessionstart-hook-examples.html">Claude Code SessionStart hook examples: inject git, notes and date at startup</a></li>
+  <li><a href="claude-code-pretooluse-hook-examples.html">Claude Code PreToolUse hook examples: 5 copy-paste hooks</a></li>
+  <li><a href="claude-code-posttooluse-hook-examples.html">Claude Code PostToolUse hook examples: format, lint, test after every edit</a></li>
+  <li><a href="claude-code-userpromptsubmit-hook-examples.html">Claude Code UserPromptSubmit hook examples: block secrets, add context</a></li>
+  <li><a href="claude-code-stop-hook-examples.html">Claude Code Stop hook examples: keep Claude working until tests pass</a></li>
+  <li><a href="claude-code-notification-hook-examples.html">Claude Code Notification hook examples: desktop alerts, bell, webhook</a></li>
+  <li><a href="claude-code-hook-not-working.html">Claude Code hook not working? A 7-step debugging checklist</a></li>
+</ul>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-precompact">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
