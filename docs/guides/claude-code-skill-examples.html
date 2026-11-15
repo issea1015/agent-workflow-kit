@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code skill examples: 5 SKILL.md files you can copy (validated)</title>
+<meta name="description" content="Five working Claude Code skills with their full SKILL.md: commit message, fix a failing test, changelog entry, codebase tour and secret check. Where skills live, which frontmatter fields matter, and how to make Claude actually use them.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-skill-examples.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Claude Code skill examples: 5 SKILL.md files you can copy (validated)">
+<meta property="og:description" content="Five working Claude Code skills with their full SKILL.md: commit message, fix a failing test, changelog entry, codebase tour and secret check. Where skills live, which frontmatter fields matter, and how to make Claude actually use them.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-skill-examples.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Claude Code skill examples: 5 SKILL.md files you can copy (validated)", "description": "Five working Claude Code skills with their full SKILL.md: commit message, fix a failing test, changelog entry, codebase tour and secret check. Where skills live, which frontmatter fields matter, and how to make Claude actually use them.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/claude-code-skill-examples.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code skill examples: 5 SKILL.md files you can copy (validated)</h1>
+  <p class="lead">A skill is a folder with a <code>SKILL.md</code> file: a short description that tells Claude when to use it, and the steps to follow. Five copy-paste skills below, each checked with <code>claude plugin validate</code>.</p>
+</header>
+<article>
+<h2>How a skill works</h2>
+<ul>
+  <li><b>Where:</b> <code>.claude/skills/&lt;name&gt;/SKILL.md</code> in a project (share it with the repo), or <code>~/.claude/skills/&lt;name&gt;/SKILL.md</code> for all your projects. Plugins can ship skills too.</li>
+  <li><b>Frontmatter:</b> <code>name</code> (lowercase, hyphens) and <code>description</code> are the two that matter. <code>allowed-tools</code> lets the skill use the listed tools without asking. Newer versions support more fields; check the skills docs for your version.</li>
+  <li><b>When it runs:</b> Claude sees every skill's description and loads the full file only when a task matches. You can also call one directly with <code>/name</code>.</li>
+  <li><b>The description decides everything.</b> Say what it does and when to use it ("Use when the user asks for…"). A vague description means the skill never fires.</li>
+</ul>
+<pre><code>.claude/skills/
+  commit-message/SKILL.md
+  fix-failing-test/SKILL.md
+  changelog-entry/SKILL.md
+  codebase-tour/SKILL.md
+  secret-check/SKILL.md</code></pre>
+
+<h2>1. Commit message from the staged diff</h2>
+<p>Reads only the staged diff and the last 10 commits, matches the repo's style, and commits only when asked. <code>allowed-tools</code> lets it run those git commands without a permission prompt.</p>
+<p class="note">.claude/skills/commit-message/SKILL.md</p>
+<pre><code>---
+name: commit-message
+description: Write a commit message from the staged diff. Use when the user asks for a commit message or asks Claude to commit staged changes.
+allowed-tools: Bash(git diff:*), Bash(git log:*), Bash(git status:*)
+---
+
+# Commit message
+
+1. Run `git diff --cached`. If nothing is staged, say so and stop. Do not stage files yourself.
+2. Run `git log --oneline -10` and match the repo&#x27;s style (Conventional Commits, ticket prefixes, tense).
+3. Write a subject of 72 characters or less that says what changed and why, in the imperative.
+4. Add a body only when the why is not obvious from the subject. Wrap at 72 characters.
+5. Show the message. Commit only if the user asked you to commit.</code></pre>
+<h2>2. Fix a failing test (the cause, not the test)</h2>
+<p>The most useful rule here is step 5: Claude sometimes makes a test pass by loosening it. Saying it plainly in a skill stops most of that.</p>
+<p class="note">.claude/skills/fix-failing-test/SKILL.md</p>
+<pre><code>---
+name: fix-failing-test
+description: Find out why a test fails and fix the cause, not the test. Use when a test, CI job or test command fails.
+---
+
+# Fix a failing test
+
+1. Run the single failing test and read the full error, not just the last line.
+2. Say in one sentence what the test expects and what happened instead.
+3. Find the cause in the code under test. Read the recent diff (`git diff`, `git log -p -3 -- &lt;file&gt;`) first.
+4. Fix the code. Change the test only if the test itself is wrong, and say why.
+5. Never skip, delete or loosen a test to make it pass.
+6. Run the failing test again, then the whole suite, and report both results.</code></pre>
+<h2>3. Changelog entry</h2>
+<p>Keeps the file's own format and writes for users. It never edits released sections.</p>
+<p class="note">.claude/skills/changelog-entry/SKILL.md</p>
+<pre><code>---
+name: changelog-entry
+description: Add an entry to CHANGELOG.md for the current change. Use when the user asks to update the changelog or prepare a release.
+---
+
+# Changelog entry
+
+1. Open CHANGELOG.md. If it doesn&#x27;t exist, ask before creating one.
+2. Follow the file&#x27;s format. If it uses Keep a Changelog, add the entry under `## [Unreleased]`
+   in the right group: Added, Changed, Deprecated, Removed, Fixed, Security.
+3. Write for users, not reviewers: what they will notice, in one line each. Link the PR or issue if the file does.
+4. Don&#x27;t change existing released sections.
+5. Show the diff of CHANGELOG.md when done.</code></pre>
+<h2>4. Codebase tour</h2>
+<p>Read-only by design: <code>allowed-tools</code> lists only reading tools, and the last line says not to change files. Good first skill for onboarding.</p>
+<p class="note">.claude/skills/codebase-tour/SKILL.md</p>
+<pre><code>---
+name: codebase-tour
+description: Give a short guided tour of an unfamiliar repository. Use when the user is new to a codebase or asks how it is laid out or where to start.
+allowed-tools: Read, Grep, Glob, Bash(git log:*), Bash(ls:*)
+---
+
+# Codebase tour
+
+1. Read README, CLAUDE.md and the build file (package.json, pyproject.toml, go.mod, Cargo.toml, Makefile).
+2. List the top-level folders and say in one line what each one holds.
+3. Find the entry points (main, server start, CLI) and trace one real request or command through the code.
+4. Show how to run it, test it and lint it, with the exact commands from the repo.
+5. Name the 5 files a new contributor should read first, and why.
+Keep it under one screen. Don&#x27;t change any files.</code></pre>
+<h2>5. Secret check before commit or push</h2>
+<p>A skill is advice Claude follows; it can't stop a commit. Pair it with a PreToolUse hook if you need a hard block (see <a href="block-dangerous-commands-claude-code.html">block dangerous commands</a>).</p>
+<p class="note">.claude/skills/secret-check/SKILL.md</p>
+<pre><code>---
+name: secret-check
+description: Check a diff for secrets before it is committed or pushed. Use before a commit or push, or when the user asks whether a change leaks credentials.
+allowed-tools: Bash(git diff:*), Grep
+---
+
+# Secret check
+
+1. Run `git diff --cached` (or `git diff &lt;base&gt;...HEAD` before a push).
+2. Look for API keys, tokens, private keys, passwords, connection strings and .env contents in added lines.
+   Common shapes: `sk-`, `ghp_`, `AKIA`, `-----BEGIN`, `password=`, `postgres://user:pass@`.
+3. Check that new files like `.env`, `*.pem` and `credentials.json` are ignored by `.gitignore`.
+4. Report each finding with file and line, and mask the value (show only the first 4 characters).
+5. If you find one, stop: don&#x27;t commit or push. Tell the user to remove it and rotate the key.</code></pre>
+<h2>Check them</h2>
+<p>Put the folders in a plugin layout and run the validator. It checks every SKILL.md's frontmatter:</p>
+<pre><code>$ claude plugin validate .
+√ Validation passed with warnings</code></pre>
+<p>(The only warning was a missing plugin icon.) Then ask Claude "write a commit message" in a repo with staged changes and check that it says it's using the commit-message skill.</p>
+<h2>Skill not firing?</h2>
+<ul>
+  <li>Make the description concrete: name the trigger words a user would type.</li>
+  <li>Check the folder name and the file name: it must be <code>SKILL.md</code> inside its own folder.</li>
+  <li>Start a new session after adding a skill, then run <code>/name</code> once to confirm it loads.</li>
+</ul>
+<h2>Before you install someone else's skill</h2>
+<p>A skill can tell Claude to run commands, and <code>allowed-tools</code> can skip the prompt. Read it first: see <a href="check-claude-code-skill-before-installing.html">how to check a Claude Code skill before installing it</a>, or run the free <a href="https://github.com/issea1015/agent-hook-audit">agent-hook-audit</a>. The <a href="https://apify.com/issea1015/agent-config-audit">agent-config-audit</a> Apify actor checks a whole repo's skills and hooks at once.</p>
+
+<h2>Want more tested skills ready to install?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> ships 9 skills (code review, debugging, refactoring, dependency upgrades, PR descriptions, release notes and more), 3 tested safety hooks and 3 CLAUDE.md templates, with install steps that pass a clean-install QA, plus <code>audit.py</code>.</p>
+<h2>Related guides</h2>
+<ul>
+  <li><a href="check-claude-code-skill-before-installing.html">How to check a Claude Code skill before installing it</a></li>
+  <li><a href="claude-code-pretooluse-hook-examples.html">Claude Code PreToolUse hook examples: 5 copy-paste hooks</a></li>
+  <li><a href="claude-code-permissions-allow-list.html">Claude Code permissions allow list</a></li>
+  <li><a href="check-claude-md-file.html">Check your CLAUDE.md file</a></li>
+</ul>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-skills">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
