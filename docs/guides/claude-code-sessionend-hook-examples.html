@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code SessionEnd hook examples: log, archive and clean up when a session ends (tested)</title>
+<meta name="description" content="Five working SessionEnd hooks for Claude Code: log every session, archive the transcript, delete scratch files, save tool-use stats, and record uncommitted git changes for next time. Each one tested with the JSON Claude Code sends.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-sessionend-hook-examples.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Claude Code SessionEnd hook examples: log, archive and clean up when a session ends (tested)">
+<meta property="og:description" content="Five working SessionEnd hooks for Claude Code: log every session, archive the transcript, delete scratch files, save tool-use stats, and record uncommitted git changes for next time. Each one tested with the JSON Claude Code sends.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-sessionend-hook-examples.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Claude Code SessionEnd hook examples: log, archive and clean up when a session ends (tested)", "description": "Five working SessionEnd hooks for Claude Code: log every session, archive the transcript, delete scratch files, save tool-use stats, and record uncommitted git changes for next time. Each one tested with the JSON Claude Code sends.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/claude-code-sessionend-hook-examples.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code SessionEnd hook examples: log, archive and clean up when a session ends (tested)</h1>
+  <p class="lead">A SessionEnd hook runs once when a Claude Code session ends: you exit, run <code>/clear</code>, log out, or the session stops for another reason. It cannot stop the session from ending, so it is the place for cleanup and record keeping. Five small hooks, each tested by piping in the JSON Claude Code sends.</p>
+</header>
+<article>
+<h2>How a SessionEnd hook works</h2>
+<p>Besides the common fields (<code>session_id</code>, <code>transcript_path</code>, <code>cwd</code>, <code>hook_event_name</code>), the JSON on stdin has <code>reason</code>:</p>
+<pre><code>{&quot;session_id&quot;: &quot;abc123&quot;, &quot;transcript_path&quot;: &quot;~/.claude/projects/.../abc123.jsonl&quot;,
+ &quot;cwd&quot;: &quot;/Users/...&quot;, &quot;hook_event_name&quot;: &quot;SessionEnd&quot;, &quot;reason&quot;: &quot;prompt_input_exit&quot;}</code></pre>
+<ul>
+  <li><code>reason</code> says why the session ended, for example <code>clear</code> (you ran <code>/clear</code>), <code>logout</code>, <code>prompt_input_exit</code> (you exited at the prompt) or <code>other</code>. Check the hooks reference for the current list; the examples below just record it, or filter on it inside the script.</li>
+  <li>The session is already ending, so the hook cannot block it and its output is not shown to Claude. Write what you want to keep to a file.</li>
+  <li><code>transcript_path</code> still points at the full session transcript, a JSONL file with one entry per line.</li>
+</ul>
+<p>All five examples are side effects only and always exit 0. To bring what they save back into the next session, print the file from a SessionStart hook (see the end of this guide). Register scripts in <code>.claude/settings.json</code>; each example shows its entry.</p>
+<p class="note">The transcript format is internal and may change, so examples 2 and 4 read it defensively. Transcripts can contain secrets and code: git-ignore <code>.claude/transcripts</code>.</p>
+<h2>1. Log every session</h2>
+<p>Appends one tab-separated line per session to <code>.claude/sessions.log</code>: time, session id, end reason and transcript size. A cheap way to see how long and how often you work with Claude in a project.</p>
+<pre><code>import datetime, json, os, sys
+data = json.load(sys.stdin)
+path = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;sessions.log&quot;)
+os.makedirs(os.path.dirname(path), exist_ok=True)
+size = 0
+t = data.get(&quot;transcript_path&quot;)
+if t and os.path.isfile(t):
+    size = os.path.getsize(t)
+stamp = datetime.datetime.now().astimezone().strftime(&quot;%Y-%m-%d %H:%M:%S&quot;)
+with open(path, &quot;a&quot;, encoding=&quot;utf-8&quot;) as f:
+    f.write(f&#x27;{stamp}\t{data.get(&quot;session_id&quot;, &quot;?&quot;)}\t{data.get(&quot;reason&quot;, &quot;?&quot;)}\t{size} bytes\n&#x27;)
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SessionEnd&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/log_session_end.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SessionEnd&quot;,&quot;reason&quot;:&quot;prompt_input_exit&quot;}&#x27; | python3 log_session_end.py
+$ echo &#x27;{&quot;session_id&quot;:&quot;s2&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SessionEnd&quot;,&quot;reason&quot;:&quot;clear&quot;}&#x27; | python3 log_session_end.py
+$ cat .claude/sessions.log
+2026-11-15 03:16:32	s1	prompt_input_exit	653 bytes
+2026-11-15 03:16:32	s2	clear	653 bytes</code></pre>
+<h2>2. Archive the transcript</h2>
+<p>Copies the transcript to <code>.claude/transcripts/&lt;session&gt;-&lt;time&gt;-end.jsonl</code> so the full conversation stays with the project. If the transcript is missing, it does nothing.</p>
+<pre><code>import datetime, json, os, shutil, sys
+data = json.load(sys.stdin)
+src = data.get(&quot;transcript_path&quot;)
+if not src or not os.path.isfile(src):
+    sys.exit(0)  # nothing to archive
+dest_dir = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;transcripts&quot;)
+os.makedirs(dest_dir, exist_ok=True)
+stamp = datetime.datetime.now().strftime(&quot;%Y%m%d-%H%M%S&quot;)
+shutil.copy2(src, os.path.join(dest_dir, f&#x27;{data.get(&quot;session_id&quot;, &quot;session&quot;)}-{stamp}-end.jsonl&#x27;))
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SessionEnd&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/archive_transcript.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SessionEnd&quot;,&quot;reason&quot;:&quot;prompt_input_exit&quot;}&#x27; | python3 archive_transcript.py; echo &quot;exit=$?&quot;
+exit=0
+$ ls .claude/transcripts
+s1-20261115-031632-end.jsonl
+$ echo &#x27;{&quot;cwd&quot;:&quot;$PWD&quot;,&quot;reason&quot;:&quot;other&quot;}&#x27; | python3 archive_transcript.py; echo &quot;exit=$?&quot;   # no transcript: nothing to do
+exit=0</code></pre>
+<h2>3. Delete scratch files</h2>
+<p>If you ask Claude to keep throwaway files in <code>.claude/scratch</code>, this removes the folder when the session ends, so old drafts never leak into the next one.</p>
+<pre><code>import json, os, shutil, sys
+data = json.load(sys.stdin)
+scratch = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;scratch&quot;)
+if os.path.isdir(scratch):
+    shutil.rmtree(scratch, ignore_errors=True)
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SessionEnd&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/clean_scratch.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ ls .claude/scratch
+a
+$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SessionEnd&quot;,&quot;reason&quot;:&quot;prompt_input_exit&quot;}&#x27; | python3 clean_scratch.py; echo &quot;exit=$?&quot;
+exit=0
+$ ls .claude/scratch
+ls: cannot access &#x27;.claude/scratch&#x27;: No such file or directory</code></pre>
+<h2>4. Save tool-use stats for the session</h2>
+<p>Counts your typed prompts and Claude's tool calls by tool name, and writes them to <code>.claude/last-session.md</code>. Useful when you are tuning permissions: the tools Claude calls most are the ones worth an allow rule.</p>
+<pre><code>import collections, json, os, sys
+data = json.load(sys.stdin)
+prompts, tools = 0, collections.Counter()
+t = data.get(&quot;transcript_path&quot;)
+if t and os.path.isfile(t):
+    with open(t, encoding=&quot;utf-8&quot;) as f:
+        for line in f:
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue  # the transcript format is internal: skip what we can&#x27;t read
+            content = (entry.get(&quot;message&quot;) or {}).get(&quot;content&quot;)
+            if entry.get(&quot;type&quot;) == &quot;user&quot; and isinstance(content, str):
+                prompts += 1
+            elif entry.get(&quot;type&quot;) == &quot;user&quot; and isinstance(content, list):
+                prompts += any(isinstance(c, dict) and c.get(&quot;type&quot;) == &quot;text&quot; for c in content)
+            elif entry.get(&quot;type&quot;) == &quot;assistant&quot; and isinstance(content, list):
+                tools.update(c.get(&quot;name&quot;, &quot;?&quot;) for c in content
+                             if isinstance(c, dict) and c.get(&quot;type&quot;) == &quot;tool_use&quot;)
+path = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;last-session.md&quot;)
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, &quot;w&quot;, encoding=&quot;utf-8&quot;) as f:
+    f.write(f&#x27;Last session ({data.get(&quot;reason&quot;, &quot;?&quot;)}): {prompts} prompts, {sum(tools.values())} tool calls\n&#x27;)
+    f.writelines(f&quot;- {name}: {n}\n&quot; for name, n in tools.most_common())
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SessionEnd&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/session_stats.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ cat /tmp/t.jsonl   # test transcript: 2 prompts, 4 tool calls, 1 tool result, 1 bad line
+{&quot;type&quot;:&quot;user&quot;,&quot;message&quot;:{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;Add a --dry-run flag to deploy.py&quot;}}
+{&quot;type&quot;:&quot;assistant&quot;,&quot;message&quot;:{&quot;role&quot;:&quot;assistant&quot;,&quot;content&quot;:[{&quot;type&quot;:&quot;tool_use&quot;,&quot;id&quot;:&quot;t1&quot;,&quot;name&quot;:&quot;Read&quot;,&quot;input&quot;:{}},{&quot;type&quot;:&quot;tool_use&quot;,&quot;id&quot;:&quot;t2&quot;,&quot;name&quot;:&quot;Edit&quot;,&quot;input&quot;:{}}]}}
+{&quot;type&quot;:&quot;user&quot;,&quot;message&quot;:{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:[{&quot;type&quot;:&quot;tool_result&quot;,&quot;tool_use_id&quot;:&quot;t1&quot;,&quot;content&quot;:&quot;ok&quot;}]}}
+{&quot;type&quot;:&quot;user&quot;,&quot;message&quot;:{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:[{&quot;type&quot;:&quot;text&quot;,&quot;text&quot;:&quot;Now run the tests&quot;}]}}
+not json
+{&quot;type&quot;:&quot;assistant&quot;,&quot;message&quot;:{&quot;role&quot;:&quot;assistant&quot;,&quot;content&quot;:[{&quot;type&quot;:&quot;tool_use&quot;,&quot;id&quot;:&quot;t3&quot;,&quot;name&quot;:&quot;Bash&quot;,&quot;input&quot;:{}},{&quot;type&quot;:&quot;tool_use&quot;,&quot;id&quot;:&quot;t4&quot;,&quot;name&quot;:&quot;Edit&quot;,&quot;input&quot;:{}}]}}
+$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SessionEnd&quot;,&quot;reason&quot;:&quot;prompt_input_exit&quot;}&#x27; | python3 session_stats.py; echo &quot;exit=$?&quot;
+exit=0
+$ cat .claude/last-session.md
+Last session (prompt_input_exit): 2 prompts, 4 tool calls
+- Edit: 2
+- Read: 1
+- Bash: 1</code></pre>
+<h2>5. Record uncommitted git changes</h2>
+<p>Runs <code>git status --porcelain</code> and, if the tree is dirty, saves it to <code>.claude/uncommitted.txt</code>. A clean tree removes the old note. Next session you (or Claude) see right away what was left unfinished.</p>
+<pre><code>import json, os, subprocess, sys
+data = json.load(sys.stdin)
+cwd = data.get(&quot;cwd&quot;) or &quot;.&quot;
+path = os.path.join(cwd, &quot;.claude&quot;, &quot;uncommitted.txt&quot;)
+try:
+    out = subprocess.run([&quot;git&quot;, &quot;status&quot;, &quot;--porcelain&quot;], cwd=cwd, capture_output=True,
+                         text=True, timeout=10).stdout
+except (OSError, subprocess.TimeoutExpired):
+    sys.exit(0)  # not a git repo or git missing: nothing to save
+if out.strip():
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, &quot;w&quot;, encoding=&quot;utf-8&quot;) as f:
+        f.write(&quot;Uncommitted changes when the last session ended:\n&quot; + out)
+elif os.path.exists(path):
+    os.remove(path)  # clean tree: drop the stale note
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SessionEnd&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/save_uncommitted.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SessionEnd&quot;,&quot;reason&quot;:&quot;prompt_input_exit&quot;}&#x27; | python3 save_uncommitted.py; echo &quot;exit=$?&quot;
+exit=0
+$ cat .claude/uncommitted.txt
+Uncommitted changes when the last session ended:
+?? app.py
+$ rm app.py; echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;transcript_path&quot;:&quot;/tmp/t.jsonl&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SessionEnd&quot;,&quot;reason&quot;:&quot;prompt_input_exit&quot;}&#x27; | python3 save_uncommitted.py; ls .claude/uncommitted.txt   # clean tree: note removed
+ls: cannot access &#x27;.claude/uncommitted.txt&#x27;: No such file or directory</code></pre>
+<h2>Bring it back next session</h2>
+<p>A SessionStart hook's stdout is added to Claude's context. Print the notes from examples 4 and 5 there, and Claude starts the next session knowing what was left unfinished. <a href="claude-code-sessionstart-hook-examples.html">The SessionStart guide</a> has a tested script that prints a notes file; point it at <code>.claude/uncommitted.txt</code>.</p>
+<h2>Before you trust a hook</h2>
+<p>Test each one by hand like above, then run the free <a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/hook_doctor.py">hook_doctor.py</a> on your settings file to catch missing scripts and relative paths. Hooks that copy transcripts handle sensitive data, so audit them: the <a href="https://github.com/issea1015/agent-hook-audit">agent-hook-audit</a> tool is free, and the <a href="https://apify.com/issea1015/agent-config-audit">agent-config-audit</a> Apify actor checks your whole setup at once. If a hook still doesn't fire, see <a href="claude-code-hook-not-working.html">the 7-step checklist</a>.</p>
+
+<h2>Want tested hooks and skills ready to install?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> ships 3 tested safety hooks, 9 skills and 3 CLAUDE.md templates, with install steps that pass a clean-install QA, plus <code>audit.py</code>.</p>
+<h2>Related guides</h2>
+<ul>
+  <li><a href="claude-code-precompact-hook-examples.html">Claude Code PreCompact hook examples: back up and carry context across /compact</a></li>
+  <li><a href="claude-code-sessionstart-hook-examples.html">Claude Code SessionStart hook examples: inject git, notes and date at startup</a></li>
+  <li><a href="claude-code-pretooluse-hook-examples.html">Claude Code PreToolUse hook examples: 5 copy-paste hooks</a></li>
+  <li><a href="claude-code-posttooluse-hook-examples.html">Claude Code PostToolUse hook examples: format, lint, test after every edit</a></li>
+  <li><a href="claude-code-stop-hook-examples.html">Claude Code Stop hook examples: keep Claude working until tests pass</a></li>
+  <li><a href="claude-code-hook-not-working.html">Claude Code hook not working? A 7-step debugging checklist</a></li>
+</ul>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-sessionend">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
