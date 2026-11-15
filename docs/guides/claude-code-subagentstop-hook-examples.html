@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code SubagentStop hook examples: check and log every subagent before it reports back (tested)</title>
+<meta name="description" content="Five working SubagentStop hooks for Claude Code: log each subagent, archive its transcript, make it pass the tests, keep its edits inside allowed folders, and count subagents per session. Each one tested with the JSON Claude Code sends.">
+<link rel="canonical" href="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-subagentstop-hook-examples.html">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5f5e58;--line:#e4e1d8;--acc:#1f5f4a;--acc-fg:#fff;--card:#fff;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#151614;--fg:#ecebe6;--mut:#a3a29a;--line:#2d2e2a;--acc:#6fc4a2;--acc-fg:#0d1a14;--card:#1c1d1a;--code:#23241f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:0 16px}
+header{padding:72px 0 40px}h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:20px;color:var(--mut);max-width:620px}
+.free{margin-top:18px;font-size:.95em}
+.cta{display:inline-block;margin-top:24px;padding:14px 26px;background:var(--acc);color:var(--acc-fg);border-radius:8px;text-decoration:none;font-weight:600}
+.price{margin-left:14px;color:var(--mut)}s{opacity:.7}
+section{padding:36px 0;border-top:1px solid var(--line)}h2{font-size:24px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mut);font-size:15px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace}
+details{border-bottom:1px solid var(--line);padding:12px 0}summary{cursor:pointer;font-weight:600}
+footer{padding:40px 0 64px;color:var(--mut);font-size:14px}
+</style>
+<style>article h2{margin-top:36px}article p,article li{max-width:720px}.note{color:var(--mut);font-size:15px}</style>
+<!-- seo -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Claude Code SubagentStop hook examples: check and log every subagent before it reports back (tested)">
+<meta property="og:description" content="Five working SubagentStop hooks for Claude Code: log each subagent, archive its transcript, make it pass the tests, keep its edits inside allowed folders, and count subagents per session. Each one tested with the JSON Claude Code sends.">
+<meta property="og:url" content="https://issea1015.github.io/agent-workflow-kit/guides/claude-code-subagentstop-hook-examples.html">
+<meta property="og:image" content="https://issea1015.github.io/agent-workflow-kit/cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Claude Code SubagentStop hook examples: check and log every subagent before it reports back (tested)", "description": "Five working SubagentStop hooks for Claude Code: log each subagent, archive its transcript, make it pass the tests, keep its edits inside allowed folders, and count subagents per session. Each one tested with the JSON Claude Code sends.", "image": "https://issea1015.github.io/agent-workflow-kit/cover.png", "url": "https://issea1015.github.io/agent-workflow-kit/guides/claude-code-subagentstop-hook-examples.html", "author": {"@type": "Organization", "name": "Agent Workflow Kit", "url": "https://issea1015.github.io/agent-workflow-kit/"}}</script>
+<!-- /seo -->
+</head>
+<body>
+<main>
+<header style="padding:56px 0 8px">
+  <p class="note"><a href="../">Agent Workflow Kit</a> · Guides</p>
+  <h1>Claude Code SubagentStop hook examples: check and log every subagent before it reports back (tested)</h1>
+  <p class="lead">A SubagentStop hook runs when a subagent (a Task/Agent tool call) finishes, just before its answer goes back to the main Claude. Like a Stop hook, it can send the subagent back to keep working. Five small hooks, each tested by piping in the JSON Claude Code sends.</p>
+</header>
+<article>
+<h2>How a SubagentStop hook works</h2>
+<p>The JSON on stdin has the common fields (<code>session_id</code>, <code>transcript_path</code>, <code>cwd</code>, <code>hook_event_name</code>) plus <code>stop_hook_active</code>. Recent versions also send fields about the subagent itself, such as <code>agent_id</code>, <code>agent_type</code> and <code>agent_transcript_path</code>; check the hooks reference for your version. The examples read them with <code>.get()</code> so they still work without them.</p>
+<pre><code>{&quot;session_id&quot;:&quot;s1&quot;, &quot;cwd&quot;:&quot;/Users/...&quot;, &quot;hook_event_name&quot;:&quot;SubagentStop&quot;, &quot;stop_hook_active&quot;:false, &quot;agent_id&quot;:&quot;a1&quot;, &quot;agent_type&quot;:&quot;code-reviewer&quot;, &quot;agent_transcript_path&quot;:&quot;/tmp/agent-a1.jsonl&quot;}</code></pre>
+<ul>
+  <li>To send the subagent back, print <code>{&quot;decision&quot;: &quot;block&quot;, &quot;reason&quot;: &quot;...&quot;}</code> and exit 0 (or exit 2 with the reason on stderr). The reason is given to the subagent as its next instruction.</li>
+  <li><code>stop_hook_active</code> is <code>true</code> when the subagent is already continuing because of a stop hook. Always exit early in that case, or a hook that keeps failing will loop forever.</li>
+  <li>Exit 0 with no output lets the subagent finish normally.</li>
+</ul>
+<p>Examples 1, 2 and 5 are side effects only and always exit 0. Examples 3 and 4 can block. Register scripts in <code>.claude/settings.json</code>; each example shows its entry.</p>
+<h2>1. Log every subagent</h2>
+<p>Appends one line per finished subagent to <code>.claude/subagents.log</code>: time, session id and agent type. A cheap way to see which subagents Claude actually uses.</p>
+<pre><code>import datetime, json, os, sys
+data = json.load(sys.stdin)
+path = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;subagents.log&quot;)
+os.makedirs(os.path.dirname(path), exist_ok=True)
+stamp = datetime.datetime.now().astimezone().strftime(&quot;%Y-%m-%d %H:%M:%S&quot;)
+agent = data.get(&quot;agent_type&quot;) or data.get(&quot;agent_id&quot;) or &quot;subagent&quot;
+with open(path, &quot;a&quot;, encoding=&quot;utf-8&quot;) as f:
+    f.write(f&#x27;{stamp}\t{data.get(&quot;session_id&quot;, &quot;?&quot;)}\t{agent}\n&#x27;)
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SubagentStop&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/log_subagent.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SubagentStop&quot;,&quot;stop_hook_active&quot;:false,&quot;agent_id&quot;:&quot;a1&quot;,&quot;agent_type&quot;:&quot;code-reviewer&quot;,&quot;agent_transcript_path&quot;:&quot;/tmp/agent-a1.jsonl&quot;}&#x27; | python3 log_subagent.py
+$ cat .claude/subagents.log
+2026-11-15 07:17:00	s1	code-reviewer</code></pre>
+<h2>2. Archive the subagent's transcript</h2>
+<p>The main transcript only shows the subagent's final answer. If your version sends <code>agent_transcript_path</code>, this copies the subagent's full transcript to <code>.claude/transcripts/subagents/</code>. Without it, it does nothing.</p>
+<pre><code>import datetime, json, os, shutil, sys
+data = json.load(sys.stdin)
+src = data.get(&quot;agent_transcript_path&quot;)  # newer versions only
+if not src or not os.path.isfile(src):
+    sys.exit(0)  # nothing to archive
+dest_dir = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;transcripts&quot;, &quot;subagents&quot;)
+os.makedirs(dest_dir, exist_ok=True)
+stamp = datetime.datetime.now().strftime(&quot;%Y%m%d-%H%M%S&quot;)
+name = data.get(&quot;agent_id&quot;) or os.path.splitext(os.path.basename(src))[0]
+shutil.copy2(src, os.path.join(dest_dir, f&quot;{name}-{stamp}.jsonl&quot;))
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SubagentStop&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/archive_subagent.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SubagentStop&quot;,&quot;stop_hook_active&quot;:false,&quot;agent_id&quot;:&quot;a1&quot;,&quot;agent_type&quot;:&quot;code-reviewer&quot;,&quot;agent_transcript_path&quot;:&quot;/tmp/agent-a1.jsonl&quot;}&#x27; | python3 archive_subagent.py; echo &quot;exit=$?&quot;
+exit=0
+$ ls .claude/transcripts/subagents
+a1-20261115-071700.jsonl
+$ echo &#x27;{&quot;cwd&quot;:&quot;$PWD&quot;}&#x27; | python3 archive_subagent.py; echo &quot;exit=$?&quot;   # no subagent transcript: nothing to do
+exit=0</code></pre>
+<h2>3. Make the subagent pass the tests</h2>
+<p>Runs <code>pytest -q -x</code> when the subagent finishes. If tests fail, the subagent gets the last lines of output and keeps working, so a broken change never reaches the main conversation as "done". It skips when pytest is not installed and when <code>stop_hook_active</code> is set, so it sends a subagent back at most once.</p>
+<pre><code>import json, os, shutil, subprocess, sys
+data = json.load(sys.stdin)
+if data.get(&quot;stop_hook_active&quot;):
+    sys.exit(0)  # already sent back once: let it finish, never loop
+if not shutil.which(&quot;pytest&quot;):
+    sys.exit(0)  # no test runner here: don&#x27;t block on a missing tool
+cwd = data.get(&quot;cwd&quot;) or &quot;.&quot;
+try:
+    r = subprocess.run([&quot;pytest&quot;, &quot;-q&quot;, &quot;-x&quot;], cwd=cwd, capture_output=True, text=True, timeout=120)
+except subprocess.TimeoutExpired:
+    sys.exit(0)
+if r.returncode not in (0, 5):  # 5 = no tests collected
+    tail = &quot;\n&quot;.join((r.stdout + r.stderr).strip().splitlines()[-15:])
+    print(json.dumps({&quot;decision&quot;: &quot;block&quot;,
+                      &quot;reason&quot;: &quot;Tests fail. Fix them before you report back:\n&quot; + tail}))
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SubagentStop&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/subagent_tests.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SubagentStop&quot;,&quot;stop_hook_active&quot;:false,&quot;agent_id&quot;:&quot;a1&quot;,&quot;agent_type&quot;:&quot;code-reviewer&quot;,&quot;agent_transcript_path&quot;:&quot;/tmp/agent-a1.jsonl&quot;}&#x27; | python3 subagent_tests.py; echo &quot;exit=$?&quot;   # tests pass: no output
+exit=0
+$ echo &#x27;def test_bad(): assert 1 == 2&#x27; &gt; tests/test_b.py
+$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SubagentStop&quot;,&quot;stop_hook_active&quot;:false,&quot;agent_id&quot;:&quot;a1&quot;,&quot;agent_type&quot;:&quot;code-reviewer&quot;,&quot;agent_transcript_path&quot;:&quot;/tmp/agent-a1.jsonl&quot;}&#x27; | python3 subagent_tests.py
+{&quot;decision&quot;: &quot;block&quot;, &quot;reason&quot;: &quot;Tests fail. Fix them before you report back:\n...\nFAILED tests/test_b.py::test_bad - assert 1 == 2\n...\n1 failed, 1 passed in 0.01s&quot;}
+$ # same input with &quot;stop_hook_active&quot;:true: no output, exit=0</code></pre>
+<h2>4. Keep a subagent's edits inside allowed folders</h2>
+<p>Checks <code>git status --porcelain</code> and sends the subagent back if it changed files outside <code>ALLOWED</code>. Useful when you hand a subagent a narrow job ("fix the parser in src/") and don't want it touching config or CI files. <code>.claude/</code> is allowed so the logs from other hooks don't trigger it.</p>
+<pre><code>import json, subprocess, sys
+ALLOWED = (&quot;src/&quot;, &quot;tests/&quot;, &quot;.claude/&quot;)  # where subagents may change files
+data = json.load(sys.stdin)
+if data.get(&quot;stop_hook_active&quot;):
+    sys.exit(0)  # already sent back once: don&#x27;t loop
+try:
+    out = subprocess.run([&quot;git&quot;, &quot;status&quot;, &quot;--porcelain&quot;], cwd=data.get(&quot;cwd&quot;) or &quot;.&quot;,
+                         capture_output=True, text=True, timeout=10).stdout
+except (OSError, subprocess.TimeoutExpired):
+    sys.exit(0)
+outside = [line[3:] for line in out.splitlines() if line[3:] and not line[3:].startswith(ALLOWED)]
+if outside:
+    print(json.dumps({&quot;decision&quot;: &quot;block&quot;,
+                      &quot;reason&quot;: &quot;You changed files outside &quot; + &quot;, &quot;.join(ALLOWED)
+                                + &quot;: &quot; + &quot;, &quot;.join(outside) + &quot;. Revert them or explain why in your reply.&quot;}))
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SubagentStop&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/subagent_scope.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ git status --porcelain
+?? .claude/
+?? src/
+$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SubagentStop&quot;,&quot;stop_hook_active&quot;:false,&quot;agent_id&quot;:&quot;a1&quot;,&quot;agent_type&quot;:&quot;code-reviewer&quot;,&quot;agent_transcript_path&quot;:&quot;/tmp/agent-a1.jsonl&quot;}&#x27; | python3 subagent_scope.py; echo &quot;exit=$?&quot;   # only allowed folders: no output
+exit=0
+$ echo x &gt; config.yml
+$ echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SubagentStop&quot;,&quot;stop_hook_active&quot;:false,&quot;agent_id&quot;:&quot;a1&quot;,&quot;agent_type&quot;:&quot;code-reviewer&quot;,&quot;agent_transcript_path&quot;:&quot;/tmp/agent-a1.jsonl&quot;}&#x27; | python3 subagent_scope.py
+{&quot;decision&quot;: &quot;block&quot;, &quot;reason&quot;: &quot;You changed files outside src/, tests/, .claude/: config.yml. Revert them or explain why in your reply.&quot;}</code></pre>
+<p class="note">We caught a bug while testing this one: the first version did not allow <code>.claude/</code>, so the log written by example 1 blocked every subagent. Test hooks together, not just one at a time.</p>
+<h2>5. Count subagents per session</h2>
+<p>Keeps a per-session count in <code>.claude/subagent-counts.json</code> and prints a warning to stderr at 20, which shows up in verbose mode (Ctrl+O). Subagents cost tokens; this tells you when a session fans out more than you expected.</p>
+<pre><code>import json, os, sys
+data = json.load(sys.stdin)
+path = os.path.join(data.get(&quot;cwd&quot;) or &quot;.&quot;, &quot;.claude&quot;, &quot;subagent-counts.json&quot;)
+try:
+    with open(path, encoding=&quot;utf-8&quot;) as f:
+        counts = json.load(f)
+except (OSError, ValueError):
+    counts = {}
+sid = data.get(&quot;session_id&quot;, &quot;?&quot;)
+counts[sid] = counts.get(sid, 0) + 1
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, &quot;w&quot;, encoding=&quot;utf-8&quot;) as f:
+    json.dump(counts, f, indent=1)
+if counts[sid] == 20:
+    print(f&quot;20 subagents finished in session {sid}; check .claude/subagent-counts.json&quot;, file=sys.stderr)
+sys.exit(0)</code></pre>
+<pre><code>{
+  &quot;hooks&quot;: {
+    &quot;SubagentStop&quot;: [
+      {&quot;hooks&quot;: [
+        {&quot;type&quot;: &quot;command&quot;, &quot;command&quot;: &quot;python3 \&quot;$CLAUDE_PROJECT_DIR\&quot;/.claude/hooks/subagent_count.py&quot;}
+      ]}
+    ]
+  }
+}</code></pre>
+<pre><code>$ for i in $(seq 20); do echo &#x27;{&quot;session_id&quot;:&quot;s1&quot;,&quot;cwd&quot;:&quot;$PWD&quot;,&quot;hook_event_name&quot;:&quot;SubagentStop&quot;,&quot;stop_hook_active&quot;:false,&quot;agent_id&quot;:&quot;a1&quot;,&quot;agent_type&quot;:&quot;code-reviewer&quot;,&quot;agent_transcript_path&quot;:&quot;/tmp/agent-a1.jsonl&quot;}&#x27; | python3 subagent_count.py; done
+20 subagents finished in session s1; check .claude/subagent-counts.json
+$ cat .claude/subagent-counts.json
+{
+ &quot;s1&quot;: 20
+}</code></pre>
+<h2>Only for some subagents</h2>
+<p>SubagentStop has no matcher in most versions, so every hook runs for every subagent. To limit one to a subagent type, check <code>agent_type</code> at the top of the script and exit 0 for the others, for example <code>if data.get("agent_type") != "code-reviewer": sys.exit(0)</code>.</p>
+<h2>Before you trust a hook</h2>
+<p>Test each one by hand like above, then run the free <a href="https://github.com/issea1015/guard-dangerous-bash/blob/main/hook_doctor.py">hook_doctor.py</a> on your settings file to catch missing scripts and relative paths. Blocking hooks change what Claude does, so audit them: the <a href="https://github.com/issea1015/agent-hook-audit">agent-hook-audit</a> tool is free, and the <a href="https://apify.com/issea1015/agent-config-audit">agent-config-audit</a> Apify actor checks your whole setup at once. If a hook still doesn't fire, see <a href="claude-code-hook-not-working.html">the 7-step checklist</a>.</p>
+
+<h2>Want tested hooks and skills ready to install?</h2>
+<p>The <a href="../">Agent Workflow Kit</a> ships 3 tested safety hooks, 9 skills and 3 CLAUDE.md templates, with install steps that pass a clean-install QA, plus <code>audit.py</code>.</p>
+<h2>Related guides</h2>
+<ul>
+  <li><a href="claude-code-sessionend-hook-examples.html">Claude Code SessionEnd hook examples: log, archive and clean up when a session ends</a></li>
+  <li><a href="claude-code-precompact-hook-examples.html">Claude Code PreCompact hook examples: back up and carry context across /compact</a></li>
+  <li><a href="claude-code-pretooluse-hook-examples.html">Claude Code PreToolUse hook examples: 5 copy-paste hooks</a></li>
+  <li><a href="claude-code-posttooluse-hook-examples.html">Claude Code PostToolUse hook examples: format, lint, test after every edit</a></li>
+  <li><a href="claude-code-stop-hook-examples.html">Claude Code Stop hook examples: keep Claude working until tests pass</a></li>
+  <li><a href="claude-code-hook-not-working.html">Claude Code hook not working? A 7-step debugging checklist</a></li>
+</ul>
+<a class="cta" href="https://agentworkflow.lemonsqueezy.com/checkout/buy/2df7affb-7da8-4d9e-8772-a4208953f370?checkout[custom][source]=guide-subagentstop">Get the kit · $29</a>
+</article>
+<footer>Agent Workflow Kit · independent, not affiliated with Anthropic.</footer>
+</main>
+</body>
+</html>
